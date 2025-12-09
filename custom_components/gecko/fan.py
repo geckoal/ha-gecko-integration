@@ -167,10 +167,8 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
                 set_speed_method = getattr(zone, "set_speed", None)
                 if set_speed_method and callable(set_speed_method):
                     set_speed_method(speed_value)
-                    self._attr_speed = speed
-                    self._attr_is_on = speed != "off"
-                    self.async_write_ha_state()
-                    _LOGGER.info("✅ Successfully set pump %s speed to %s", self._attr_name, speed)
+                    # Let the coordinator update handle state changes
+                    _LOGGER.info("✅ Successfully sent speed command for pump %s to %s", self._attr_name, speed)
                 else:
                     _LOGGER.warning("Zone %s does not have set_speed method", zone.id)
             else:

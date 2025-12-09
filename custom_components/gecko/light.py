@@ -146,10 +146,8 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 activate_method = getattr(zone, "activate", None)
                 if activate_method and callable(activate_method):
                     activate_method()
-                    # Update the local state immediately
-                    self._attr_is_on = True
-                    self.async_write_ha_state()
-                    _LOGGER.info("✅ Successfully turned on light %s", self._attr_name)
+                    # Let the coordinator update handle state changes
+                    _LOGGER.info("✅ Successfully sent turn on command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have activate method", zone.id)
             else:
@@ -174,10 +172,8 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 deactivate_method = getattr(zone, "deactivate", None)
                 if deactivate_method and callable(deactivate_method):
                     deactivate_method()
-                    # Update the local state immediately
-                    self._attr_is_on = False
-                    self.async_write_ha_state()
-                    _LOGGER.info("✅ Successfully turned off light %s", self._attr_name)
+                    # Let the coordinator update handle state changes
+                    _LOGGER.info("✅ Successfully sent turn off command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have deactivate method", zone.id)
             else:

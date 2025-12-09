@@ -166,9 +166,8 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
             # Use the clean API to set the mode by name
             gecko_client.operation_mode_controller.set_mode_by_name(option)
             
-            # Update local state immediately for responsiveness
-            self._attr_current_option = option
-            self.async_write_ha_state()
+            # Let the coordinator update handle state changes
+            _LOGGER.info("✅ Successfully sent watercare mode command for %s", self._attr_name)
             
             # Request coordinator refresh to get updated state from the device
             await self.coordinator.async_request_refresh()
