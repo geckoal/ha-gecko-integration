@@ -1,89 +1,207 @@
+<div align="center">
+
 # 🦎 Gecko Integration for Home Assistant
 
-[![GitHub Release](https://img.shields.io/github/release/geckoal/ha-gecko-integration.svg?style=flat-square)](https://github.com/geckoal/ha-gecko-integration/releases)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+**Control your spa, hot tub, or pool equipment directly from Home Assistant**
 
-Control and monitor your Gecko-powered spas, hot tubs, and pool equipment directly from Home Assistant.
+[![GitHub Release](https://img.shields.io/github/release/geckoal/ha-gecko-integration.svg?style=for-the-badge)](https://github.com/geckoal/ha-gecko-integration/releases)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg?style=for-the-badge)](LICENSE)
 
-## Features
+</div>
 
-- 🌡️ **Climate Control**: Set and monitor spa temperature with precision
-- 💡 **Lighting Control**: Manage multi-zone LED lighting systems
-- 💨 **Fan/Pump Control**: Control pumps, blowers, and circulation systems
-- 📊 **Real-time Monitoring**: Track RF signal strength, gateway status, and water quality
-- 🔄 **Watercare Modes**: Switch between Away, Standard, Savings, and Weekender modes
-- ☁️ **Cloud Integration**: Secure OAuth2 authentication with AWS IoT backend
+---
 
-## Installation
+## ✨ Features
 
-### HACS (Recommended)
+<table>
+<tr>
+<td width="33%" valign="top">
 
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots in the top right corner
-4. Select "Custom repositories"
-5. Add this repository URL and select "Integration" as the category
-6. Click "Install"
-7. Restart Home Assistant
+### 🌡️ Climate Control
+- Set target temperature
+- Monitor current temperature
+- Track heating status
 
-### Manual Installation
+</td>
+<td width="33%" valign="top">
 
-1. Copy the `gecko` folder to your `custom_components` directory
-2. Restart Home Assistant
-3. Go to Settings → Devices & Services
-4. Click "+ ADD INTEGRATION"
-5. Search for "Gecko"
+### 💡 Lighting
+- Multi-zone LED control
+- On/off control
 
-## Configuration
+</td>
+<td width="33%" valign="top">
 
-The integration uses OAuth2 for authentication:
+### 💨 Pumps & Fans
+- Blower control
+- Multiple pump zones
 
-1. Click "+ ADD INTEGRATION" in Home Assistant
-2. Search for "Gecko"
-3. Follow the OAuth2 flow to authorize access
-4. Your spa(s) will be automatically discovered
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
 
-## Supported Entities
+### 🔄 Watercare Modes
+- Away mode
+- Standard mode
+- Energy savings mode
+- Weekender mode
 
-### Climate
-- Temperature control with heat modes
-- Current and target temperature monitoring
-- HVAC action tracking (heating/idle)
+</td>
+<td width="33%" valign="top">
 
-### Light
-- Multi-zone LED lighting
-- Brightness control
-- Color temperature support
+### 📊 Monitoring
+- Gateway status
+- Connection health
 
-### Fan
-- Pump speed control (Low/High)
-- Blower operation
-- Circulation system management
+</td>
+<td width="33%" valign="top">
 
-### Sensor
-- RF signal strength
-- RF channel
-- Gateway connection status
-- Spa operational status
+### ☁️ Cloud Integration
+- Secure OAuth2 login
+- AWS IoT backend
+- Automatic discovery
+- Push notifications
 
-### Select
-- Watercare mode selection
-- Operating mode presets
+</td>
+</tr>
+</table>
 
-## Support
+---
 
-- 🐛 [Report Issues](https://github.com/geckoal/gecko-iot-client/issues)
-- 📖 [Documentation](https://github.com/geckoal/gecko-iot-client)
-- 💬 [Discussions](https://github.com/geckoal/gecko-iot-client/discussions)
+## 📦 Installation
 
-## Credits
+### Method 1: HACS (Recommended)
 
-Built with [gecko-iot-client](https://github.com/geckoal/gecko-iot-client) library.
+1. Open **HACS** in Home Assistant
+2. Navigate to **Integrations**
+3. Click the **⋮** menu (top right) → **Custom repositories**
+4. Add repository URL: `https://github.com/geckoal/ha-gecko-integration`
+5. Select category: **Integration**
+6. Click **Download** on the Gecko integration
+7. **Restart Home Assistant**
 
-## License
+### Method 2: Manual Installation
 
-Copyright 2024-2025 Gecko Alliance
+1. Download the [latest release](https://github.com/geckoal/ha-gecko-integration/releases)
+2. Extract and copy the `custom_components/gecko` folder to your Home Assistant `custom_components` directory
+3. Your directory structure should look like:
+   ```
+   config/
+   └── custom_components/
+       └── gecko/
+           ├── __init__.py
+           ├── manifest.json
+           └── ...
+   ```
+4. **Restart Home Assistant**
 
-This integration is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for full terms.
+---
 
-**Important**: This software is intended for use with Gecko Alliance equipment through Home Assistant. Commercial use or use outside the intended scope may require authorization from Gecko Alliance. See [NOTICE](NOTICE) for additional restrictions and trademark information.
+## ⚙️ Setup & Configuration
+
+### Initial Setup
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search for **"Gecko"**
+4. Click on the Gecko integration
+
+### Authentication
+
+The integration will guide you through OAuth2 authentication:
+
+1. Click **Continue** to begin the OAuth flow
+2. You'll be redirected to the Gecko login page
+3. Enter your **Gecko spa account credentials**
+4. Grant permission to Home Assistant
+5. You'll be redirected back automatically
+
+### Automatic Discovery
+
+Once authenticated:
+- Your spa(s) will be **automatically discovered**
+- All available entities will be created
+- Devices appear under **Settings** → **Devices & Services** → **Gecko**
+
+---
+
+## 🎛️ Available Entities
+
+The integration creates multiple entity types for comprehensive spa control:
+
+| Entity Type | Description | Example |
+|------------|-------------|---------|
+| **Climate** | Temperature control and monitoring | Set spa to 104°F (40°C) |
+| **Light** | LED lighting control with brightness | Adjust ambient lighting |
+| **Fan** | Pump and blower speed control | Set pump to High speed |
+| **Binary Sensor** | On/off status indicators | Gateway connected status |
+| **Select** | Mode selection (watercare, presets) | Switch to Energy Savings mode |
+
+### Entity Examples
+
+**Climate Entity:**
+- `climate.spa_name` - Main temperature control
+
+**Light Entities:**
+- `light.spa_name_zone_1` - Primary lighting zone
+- `light.spa_name_zone_2` - Secondary lighting zone
+
+**Fan Entities:**
+- `fan.spa_name_pump_1` - Main circulation pump
+- `fan.spa_name_pump_2` - Jet pump
+
+**Sensors:**
+- `sensor.spa_name_rf_signal` - Signal strength indicator
+- `sensor.spa_name_status` - Operational status
+
+---
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+**Integration not appearing:**
+- Ensure you've restarted Home Assistant after installation
+- Check that the `custom_components/gecko` folder exists
+- Review Home Assistant logs for errors
+
+**OAuth authentication fails:**
+- Verify your Gecko account credentials
+- Check internet connectivity
+- Try clearing browser cache and retry
+
+**No devices discovered:**
+- Confirm your spa is online in the Gecko mobile app
+- Wait 1-2 minutes for discovery to complete
+- Check that your spa uses Gecko in.touch2 or compatible system
+
+**Entities not updating:**
+- Check RF signal strength sensor (low signal affects updates)
+- Verify gateway connectivity in the Gecko app
+- Restart the integration: **Settings** → **Devices & Services** → **Gecko** → **⋮** → **Reload**
+
+---
+
+## 💬 Support & Community
+
+- 🐛 **Report Issues:** [GitHub Issues](https://github.com/geckoal/ha-gecko-integration/issues)
+- 💡 **Feature Requests:** [GitHub Discussions](https://github.com/geckoal/ha-gecko-integration/discussions)
+- 📖 **Documentation:** [Full Docs](https://github.com/geckoal/ha-gecko-integration)
+
+---
+
+## 🙏 Credits
+
+This integration is built with the [gecko-iot-client](https://github.com/geckoal/gecko-iot-client) library.
+
+---
+
+## 📄 License
+
+Copyright © 2025-2026 Gecko Alliance
+
+Licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
+
+> **⚠️ Important:** This software is intended for personal use with Gecko Alliance equipment through Home Assistant. Commercial use or use outside the intended scope may require authorization from Gecko Alliance. See [NOTICE](NOTICE) for trademark information and usage restrictions.

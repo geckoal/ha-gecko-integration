@@ -11,6 +11,6 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/geckoal/ha-gecko-integration/issues",
   "loggers": ["gecko_iot_client"],
-  "requirements": ["awsiotsdk==1.26.0", "gecko-iot-client==0.2.2", "dacite"],
+  "requirements": ["awsiotsdk==1.26.0", "gecko-iot-client==0.2.2"],
   "version": "1.3.0"
 }
