@@ -9,3 +9,6 @@ AUTH0_URL_BASE = "https://gecko-prod.us.auth0.com"
 
 # API endpoints
 API_BASE_URL = "https://api.geckowatermonitor.com"
+
+# Connection timeouts
+GECKO_CONFIG_TIMEOUT = 30.0  # seconds to wait for MQTT configuration loading
