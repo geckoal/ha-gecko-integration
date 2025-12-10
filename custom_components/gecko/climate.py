@@ -162,3 +162,16 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
             _LOGGER.error(
                 "Error setting temperature for %s: %s", self.entity_id, err
             )
+    
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set new target hvac mode."""
+        if hvac_mode != HVACMode.HEAT:
+            _LOGGER.error(
+                "Unsupported HVAC mode %s for %s. Only HEAT mode is supported.",
+                hvac_mode,
+                self.entity_id,
+            )
+            raise ValueError(f"Unsupported HVAC mode: {hvac_mode}")
+        
+        # HEAT mode is the only supported mode and is always active
+        _LOGGER.debug("HVAC mode set to HEAT for %s (no action required)", self.entity_id)
