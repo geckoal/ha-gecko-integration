@@ -1,9 +1,10 @@
 ---
 name: Bug Report
 about: Create a report to help us improve
-title: '[BUG] '
+title: "[BUG] "
 labels: bug
 assignees: ''
+
 ---
 
 ## Describe the Bug
@@ -25,7 +26,7 @@ If applicable, add screenshots to help explain your problem.
 ## Environment
 - Home Assistant Version: [e.g. 2025.12.0]
 - Gecko Integration Version: [e.g. 1.0.0]
-- Spa Model: [e.g. in.touch2]
+- Spa Model: [e.g. in.touch 3 / in.touch 3+]
 
 ## Logs
 ```

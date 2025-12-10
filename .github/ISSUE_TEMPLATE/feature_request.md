@@ -1,9 +1,10 @@
 ---
 name: Feature Request
 about: Suggest an idea for this integration
-title: '[FEATURE] '
+title: "[FEATURE] "
 labels: enhancement
 assignees: ''
+
 ---
 
 ## Is your feature request related to a problem?
