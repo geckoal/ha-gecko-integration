@@ -16,6 +16,7 @@ from .api import OAuthGeckoApi
 from .oauth_implementation import GeckoPKCEOAuth2Implementation
 from .const import DOMAIN, OAUTH2_AUTHORIZE, OAUTH2_CLIENT_ID, OAUTH2_TOKEN
 from .coordinator import GeckoVesselCoordinator
+from .connection_manager import async_get_connection_manager
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -229,10 +230,25 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.info("Unloading Gecko integration entry: %s", entry.entry_id)
+    
     # Clean up all vessel coordinators
     runtime_data: GeckoRuntimeData = entry.runtime_data
     for coordinator in runtime_data.coordinators:
         await coordinator.async_shutdown()
     _LOGGER.info("Shutdown %d vessel coordinators", len(runtime_data.coordinators))
+    
+    # Disconnect all monitors from the connection manager
+    # This ensures fresh connections on reload with updated config/tokens
+    try:
+        connection_manager = await async_get_connection_manager(hass)
+        vessels = entry.data.get("vessels", [])
+        for vessel in vessels:
+            monitor_id = vessel.get("monitorId")
+            if monitor_id:
+                _LOGGER.info("Disconnecting monitor %s during unload", monitor_id)
+                await connection_manager.async_disconnect_monitor(monitor_id)
+    except Exception as ex:
+        _LOGGER.warning("Error disconnecting monitors during unload: %s", ex)
     
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
