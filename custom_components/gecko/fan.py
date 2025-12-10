@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
 
-from gecko_iot_client.models.zone_types import ZoneType
+from gecko_iot_client.models.zone_types import ZoneType, FlowZoneType
 from gecko_iot_client.models.flow_zone import FlowZone, FlowZoneCapabilities
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,8 +69,9 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         self._coordinator: GeckoVesselCoordinator = coordinator
         self._zone = zone
         self.entity_id = f"fan.{coordinator.vessel_name}_pump_{zone.id}"
-        self._attr_name = f"{coordinator.vessel_name} Pump {zone.id}"
+        self._attr_name = f"{coordinator.vessel_name} {zone.name}"
         self._attr_unique_id = f"{config_entry.entry_id}_{coordinator.vessel_name}_pump_{zone.id}"
+
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, str(coordinator.vessel_id))},
         )
@@ -85,11 +86,24 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         
             self._attr_speed_list = self._speed_list
         
+        # Set icon based on zone type
+        self._attr_icon = self._get_icon_for_zone_type()
+        
         # Initialize state and availability from zone (will be set by async_added_to_hass event registration)
         self._attr_available = False
         self._update_from_zone()
  
         
+    def _get_icon_for_zone_type(self) -> str:
+        """Return icon based on flow zone type."""
+        zone_type = self._zone.type
+        if zone_type == FlowZoneType.WATERFALL_ZONE:
+            return "mdi:waterfall"
+        elif zone_type == FlowZoneType.BLOWER_ZONE:
+            return "mdi:wind-power"
+        else:  # FLOW_ZONE (pump)
+            return "mdi:pump"
+    
     async def async_added_to_hass(self) -> None:
         """Register update callback when entity is added to hass."""
         await super().async_added_to_hass()
