@@ -15,7 +15,7 @@ from homeassistant.util.hass_dict import HassKey
 
 from gecko_iot_client.models.events import EventChannel
 
-from .const import DOMAIN
+from .const import DOMAIN, GECKO_CONFIG_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,7 +98,11 @@ class GeckoConnectionManager:
                     broker_url=websocket_url, 
                     monitor_id=monitor_id,
                     token_refresh_callback=refresh_token_callback)
-                gecko_client = GeckoIotClient(monitor_id, transporter)
+                gecko_client = GeckoIotClient(
+                    monitor_id, 
+                    transporter, 
+                    config_timeout=GECKO_CONFIG_TIMEOUT
+                )
                 
                 # Create connection object
                 connection = GeckoMonitorConnection(
