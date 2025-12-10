@@ -175,7 +175,7 @@ The integration creates multiple entity types for comprehensive spa control:
 **No devices discovered:**
 - Confirm your spa is online in the Gecko mobile app
 - Wait 1-2 minutes for discovery to complete
-- Check that your spa uses Gecko in.touch2 or compatible system
+- Check that your spa uses Gecko in.touch 3 / in.touch 3+ or compatible system
 
 **Entities not updating:**
 - Check RF signal strength sensor (low signal affects updates)
