@@ -131,7 +131,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the light on."""
-        _LOGGER.info("Turning on light %s", self._attr_name)
+        _LOGGER.debug("Turning on light %s", self._attr_name)
         try:
             # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
@@ -147,7 +147,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 if activate_method and callable(activate_method):
                     activate_method()
                     # Let the coordinator update handle state changes
-                    _LOGGER.info("✅ Successfully sent turn on command for light %s", self._attr_name)
+                    _LOGGER.debug("Sent turn on command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have activate method", zone.id)
             else:
@@ -157,7 +157,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the light off."""
-        _LOGGER.info("Turning off light %s", self._attr_name)
+        _LOGGER.debug("Turning off light %s", self._attr_name)
         try:
             # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
@@ -173,7 +173,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 if deactivate_method and callable(deactivate_method):
                     deactivate_method()
                     # Let the coordinator update handle state changes
-                    _LOGGER.info("✅ Successfully sent turn off command for light %s", self._attr_name)
+                    _LOGGER.debug("Sent turn off command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have deactivate method", zone.id)
             else:

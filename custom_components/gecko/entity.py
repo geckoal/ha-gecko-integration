@@ -65,7 +65,7 @@ class GeckoEntityAvailabilityMixin:
         """
         new_availability = self._check_is_connected()
         if new_availability != self._attr_available:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Availability changed: %s -> %s (gateway=%s, vessel=%s)",
                 self._attr_available,
                 new_availability,
