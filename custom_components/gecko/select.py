@@ -143,8 +143,8 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
         if option not in WATERCARE_MODE_OPTIONS:
             _LOGGER.error("Invalid watercare mode option: %s", option)
             return
-            
-        _LOGGER.info("Setting watercare mode for %s to %s", self._attr_name, option)
+        
+        _LOGGER.debug("Setting watercare mode for %s to %s", self._attr_name, option)
         
         try:
             # Get the gecko client for this vessel

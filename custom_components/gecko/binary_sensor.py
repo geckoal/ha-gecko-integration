@@ -57,8 +57,6 @@ async def async_setup_entry(
 ) -> None:
     """Set up Gecko binary sensor entities from a config entry."""
     
-    _LOGGER.debug("Setting up Gecko binary sensor entities")
-    
     # Get the vessel coordinators from runtime_data
     if not hasattr(config_entry, 'runtime_data') or not config_entry.runtime_data:
         _LOGGER.error("No runtime_data found for config entry")
@@ -72,8 +70,6 @@ async def async_setup_entry(
     # Create binary sensor entities for each vessel
     entities = []
     for coordinator in coordinators:
-        _LOGGER.debug("Creating binary sensors for vessel %s (%s)", coordinator.vessel_id, coordinator.vessel_name)
-        
         for description in BINARY_SENSOR_DESCRIPTIONS:
             entity = GeckoBinarySensorEntity(
                 coordinator=coordinator,

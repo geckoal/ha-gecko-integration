@@ -149,8 +149,6 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the fan off."""
-        _LOGGER.debug("Turning off pump %s", self._attr_name)
-    
         self._zone.deactivate()
         
     @property
@@ -159,7 +157,6 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         return self._attr_is_on 
         
     async def async_set_speed(self, speed: str) -> None:
-        _LOGGER.debug("Setting pump %s speed to %s", self._attr_name, speed)
         # Map string speed to integer value expected by Gecko API
         speed_map = {
             "off": 0,
@@ -180,7 +177,6 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
                 if set_speed_method and callable(set_speed_method):
                     set_speed_method(speed_value)
                     # Let the coordinator update handle state changes
-                    _LOGGER.debug("Sent speed command for pump %s to %s", self._attr_name, speed)
                 else:
                     _LOGGER.warning("Zone %s does not have set_speed method", zone.id)
             else:

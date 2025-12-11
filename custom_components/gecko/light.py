@@ -56,7 +56,6 @@ async def async_setup_entry(
                     entity = GeckoLight(coordinator, config_entry, zone)
                     new_entities.append(entity)
                     created_entity_ids.add(entity_id)
-                    _LOGGER.debug("Created light entity for vessel %s, zone %s", coordinator.vessel_name, zone.id)
             
             if new_entities:
                 async_add_entities(new_entities)
@@ -131,7 +130,6 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the light on."""
-        _LOGGER.debug("Turning on light %s", self._attr_name)
         try:
             # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
@@ -146,8 +144,6 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 activate_method = getattr(zone, "activate", None)
                 if activate_method and callable(activate_method):
                     activate_method()
-                    # Let the coordinator update handle state changes
-                    _LOGGER.debug("Sent turn on command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have activate method", zone.id)
             else:
@@ -157,7 +153,6 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the light off."""
-        _LOGGER.debug("Turning off light %s", self._attr_name)
         try:
             # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
@@ -172,8 +167,6 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
                 deactivate_method = getattr(zone, "deactivate", None)
                 if deactivate_method and callable(deactivate_method):
                     deactivate_method()
-                    # Let the coordinator update handle state changes
-                    _LOGGER.debug("Sent turn off command for light %s", self._attr_name)
                 else:
                     _LOGGER.warning("Zone %s does not have deactivate method", zone.id)
             else:

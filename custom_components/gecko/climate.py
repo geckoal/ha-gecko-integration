@@ -43,7 +43,6 @@ async def async_setup_entry(
     def discover_new_climate_entities(coordinator: GeckoVesselCoordinator) -> None:
         """Discover climate entities for temperature control zones."""
         zones = coordinator.get_zones_by_type(ZoneType.TEMPERATURE_CONTROL_ZONE)
-        _LOGGER.debug("Discovered zones for vessel %s: %s", coordinator.vessel_name, zones)
         
         # Get or create the set of added zone IDs for this coordinator
         vessel_key = f"{coordinator.entry_id}_{coordinator.vessel_id}"
@@ -152,7 +151,7 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
                 self._zone.set_target_temperature, temperature
             )
           
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Set target temperature to %.1f°C for %s",
                 temperature,
                 self.entity_id,
