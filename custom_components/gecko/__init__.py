@@ -52,8 +52,6 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Gecko from a config entry."""
-    _LOGGER.debug("Setting up Gecko integration with entry: %s", entry.entry_id)
-    
     implementation = (
         await config_entry_oauth2_flow.async_get_config_entry_implementation(
             hass, entry
@@ -68,7 +66,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create one coordinator per vessel following Home Assistant best practices
     vessels = entry.data.get("vessels", [])
     vessels_count = len(vessels)
-    _LOGGER.debug("Creating %d vessel coordinators", vessels_count)
     if vessels_count == 0:
         _LOGGER.warning("No vessels found in config entry")
     
@@ -92,7 +89,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api_client=api_client,
         coordinators=coordinators,
     )
-    _LOGGER.debug("Created %d vessel coordinators", len(coordinators))
 
     # Create devices for each vessel/spa and set up geckoIotClient
     await _setup_vessels_and_gecko_clients(hass, entry)
@@ -109,7 +105,6 @@ async def _setup_vessels_and_gecko_clients(hass: HomeAssistant, entry: ConfigEnt
     """Set up devices for each vessel/spa and geckoIotClient connections."""
     runtime_data: GeckoRuntimeData = entry.runtime_data
     vessels = entry.data.get("vessels", [])
-    _LOGGER.debug("Setting up %d vessels", len(vessels))
     
     if not vessels:
         _LOGGER.warning("No vessels found in config entry data!")
@@ -118,14 +113,9 @@ async def _setup_vessels_and_gecko_clients(hass: HomeAssistant, entry: ConfigEnt
     device_registry = dr.async_get(hass)
     api_client = runtime_data.api_client
     
-    _LOGGER.debug("Setting up devices and geckoIotClient for %d vessels", len(vessels))
-    
     # Match each vessel with its coordinator
     for i, (vessel, coordinator) in enumerate(zip(vessels, runtime_data.coordinators)):
         vessel_name = vessel.get("name", f"Vessel {i}")
-        monitor_id = vessel.get("monitorId")
-        
-        _LOGGER.debug("Setting up vessel: %s (monitor: %s)", vessel_name, monitor_id)
         
         try:
             _setup_vessel_device(entry, vessel, device_registry)
@@ -140,14 +130,6 @@ def _setup_vessel_device(entry: ConfigEntry, vessel: dict, device_registry: dr.D
     vessel_name = vessel.get("name", f"Vessel {vessel_id}")
     vessel_type = vessel.get("type", "Unknown")
     protocol_name = vessel.get("protocolName", "Unknown")
-    
-    # Log spa configuration info for debugging
-    spa_config = vessel.get("spa_configuration", {})
-    if spa_config:
-        zones = spa_config.get("zones", {})
-        _LOGGER.debug("Spa %s has %d zone types configured", vessel_name, len(zones))
-    else:
-        _LOGGER.debug("No spa configuration found for vessel %s", vessel_name)
     
     # Create a more descriptive device name
     device_name = vessel_name
@@ -174,15 +156,12 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
         return
     
     try:
-        _LOGGER.debug("Requesting livestream URL for monitor %s", monitor_id)
         livestream_data = await api_client.async_get_monitor_livestream(monitor_id)
         websocket_url = livestream_data.get("brokerUrl")
         
         if not websocket_url:
             _LOGGER.error("No WebSocket URL found in livestream response for monitor %s", monitor_id)
             return
-            
-        _LOGGER.debug("Received WebSocket URL for monitor %s", monitor_id)
         
         # Don't create zones from spa configuration in coordinator - let GeckoIotClient handle this
         # The coordinator will get zones from the GeckoIotClient once it's connected and configured
@@ -202,8 +181,6 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.debug("Unloading Gecko integration entry: %s", entry.entry_id)
-    
     # Clean up all vessel coordinators
     runtime_data: GeckoRuntimeData = entry.runtime_data
     for coordinator in runtime_data.coordinators:
@@ -217,7 +194,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for vessel in vessels:
             monitor_id = vessel.get("monitorId")
             if monitor_id:
-                _LOGGER.debug("Disconnecting monitor %s during unload", monitor_id)
                 await connection_manager.async_disconnect_monitor(monitor_id)
     except Exception as ex:
         _LOGGER.error("Error disconnecting monitors during unload: %s", ex)

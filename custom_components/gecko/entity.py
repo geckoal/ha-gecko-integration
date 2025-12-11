@@ -50,10 +50,8 @@ class GeckoEntityAvailabilityMixin:
 
         if register:
             gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
-            _LOGGER.debug("Registered connectivity callback")
         else:
             gecko_client.off(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
-            _LOGGER.debug("Unregistered connectivity callback")
 
         self._connectivity_callback_registered = register
 
@@ -81,27 +79,15 @@ class GeckoEntityAvailabilityMixin:
     def _update_availability(self) -> None:
         """Update availability from gecko_iot_client's is_connected property."""
         new_availability = self._check_is_connected()
-        _LOGGER.debug(
-            "Initial availability check: %s (was: %s)",
-            new_availability,
-            self._attr_available,
-        )
         self._attr_available = new_availability
 
     def _check_is_connected(self) -> bool:
         """Check if gecko_iot_client is connected."""
         gecko_client = self._get_gecko_client_sync()
         if not gecko_client:
-            _LOGGER.debug("No gecko client available, marking as unavailable")
             return False
         
-        is_connected = gecko_client.is_connected
-        _LOGGER.debug(
-            "Gecko client is_connected: %s (connectivity_status: %s)",
-            is_connected,
-            getattr(gecko_client, "_connectivity_status", "N/A"),
-        )
-        return is_connected
+        return gecko_client.is_connected
 
     def _get_gecko_client_sync(self) -> GeckoIotClient | None:
         """Get gecko client synchronously from connection manager."""
