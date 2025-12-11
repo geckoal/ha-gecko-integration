@@ -14,8 +14,10 @@ from homeassistant.helpers.singleton import singleton
 from homeassistant.util.hass_dict import HassKey
 
 from gecko_iot_client.models.events import EventChannel
+from gecko_iot_client import GeckoIotClient
+from gecko_iot_client.transporters.mqtt import MqttTransporter
 
-from .const import DOMAIN
+from .const import DOMAIN, CONFIG_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,10 +87,7 @@ class GeckoConnectionManager:
             _LOGGER.info("🔌 Creating new connection for monitor %s", monitor_id)
             
             try:
-                # Import geckoIotClient classes
-                from gecko_iot_client import GeckoIotClient
-                from gecko_iot_client.transporters.mqtt import MqttTransporter
-                
+
                 # Create unique client ID using monitor ID
                 unique_client_id = f"ha-gecko-{monitor_id}-{int(time.time())}"
                 _LOGGER.info("🆔 Using unique client ID: %s for monitor %s", unique_client_id, monitor_id)
@@ -98,7 +97,9 @@ class GeckoConnectionManager:
                     broker_url=websocket_url, 
                     monitor_id=monitor_id,
                     token_refresh_callback=refresh_token_callback)
-                gecko_client = GeckoIotClient(monitor_id, transporter)
+                gecko_client = GeckoIotClient(monitor_id, 
+                                              transporter, 
+                                              config_timeout=CONFIG_TIMEOUT)
                 
                 # Create connection object
                 connection = GeckoMonitorConnection(
@@ -247,9 +248,6 @@ class GeckoConnectionManager:
 
             # Re-instantiate transporter and gecko client with new token
             if new_url:
-                from gecko_iot_client import GeckoIotClient
-                from gecko_iot_client.transporters.mqtt import MqttTransporter
-                
                 transporter = MqttTransporter(
                     broker_url=new_url,
                     monitor_id=monitor_id,
@@ -257,7 +255,7 @@ class GeckoConnectionManager:
                 )
                 
                 # Create new gecko client
-                gecko_client = GeckoIotClient(monitor_id, transporter)
+                gecko_client = GeckoIotClient(monitor_id, transporter, config_timeout=CONFIG_TIMEOUT)
                 
                 # Setup zone update handler to distribute to all callbacks
                 def on_zone_update(updated_zones):
