@@ -76,7 +76,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Trigger entity discovery when zones are updated
         self.async_set_updated_data(data)
         
-        _LOGGER.info("🔄 Zone data updated for vessel %s - entities will refresh on next update cycle", self.vessel_name)
+        _LOGGER.debug("Zone data updated for vessel %s", self.vessel_name)
 
         # Call registered callbacks for dynamic entity creation
         for callback in self._zone_update_callbacks:
@@ -101,7 +101,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 
                 # After 2 consecutive failures (1 minute), try to reconnect with fresh token
                 if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    _LOGGER.warning("Connection lost for %s, attempting reconnect with fresh token", self.vessel_name)
+                    _LOGGER.warning("Connection lost for %s, attempting reconnect", self.vessel_name)
                     await self._simple_reconnect()
                     self._consecutive_failures = 0
             else:
@@ -114,9 +114,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_zones_by_type(self, zone_type: ZoneType) -> List[AbstractZone]:
         """Get zones of a specific type for this vessel (no monitor_id needed)."""
-        zones = self._zones.get(zone_type, [])
-        _LOGGER.debug("Retrieved %d zones of type %s for vessel %s", len(zones), zone_type, self.vessel_name)
-        return zones
+        return self._zones.get(zone_type, [])
 
     def get_all_zones(self) -> Dict[ZoneType, List[AbstractZone]]:
         """Get all zones for this vessel."""
@@ -143,7 +141,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             if new_url:
                 await self.async_setup_monitor_connection(new_url)
-                _LOGGER.info("✅ Reconnected %s with fresh token", self.vessel_name)
+                _LOGGER.info("Reconnected %s", self.vessel_name)
                 
         except Exception as e:
             _LOGGER.error("Failed to reconnect %s: %s", self.vessel_name, e)
@@ -186,7 +184,6 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             """
             # Use provided monitor_id or fall back to coordinator's monitor_id
             target_monitor_id = monitor_id or self.monitor_id
-            _LOGGER.info("🔄 Token refresh callback triggered for vessel %s (monitor %s)", self.vessel_name, target_monitor_id)
             
             try:
                 # Get the config entry
@@ -207,7 +204,6 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 
                 # Fetch new livestream URL with fresh JWT token
                 # This is a sync callback from background thread, so use run_coroutine_threadsafe
-                _LOGGER.debug("Requesting new websocket URL for monitor %s", target_monitor_id)
                 future = asyncio.run_coroutine_threadsafe(
                     api_client.async_get_monitor_livestream(target_monitor_id),
                     self.hass.loop
@@ -219,8 +215,6 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Extract the new websocket URL
                 new_url = livestream_data.get("brokerUrl")
                 if new_url:
-                    _LOGGER.info("✅ Successfully refreshed websocket URL for vessel %s (monitor %s)", self.vessel_name, target_monitor_id)
-                    _LOGGER.debug("New URL: %s", new_url[:50] + "..." if len(new_url) > 50 else new_url)
                     return new_url
                 else:
                     _LOGGER.error("No brokerUrl in livestream response for vessel %s", self.vessel_name)
@@ -243,24 +237,14 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Create update callback for this vessel's coordinator
             def on_zone_update(updated_zones):
-                _LOGGER.info("📡 Zone update received for vessel %s (monitor %s)", self.vessel_name, self.monitor_id)
-                
                 # Store the updated zones from GeckoIotClient (these have state managers!)
                 self._zones = updated_zones
                 
                 # Mark this vessel as having received zones
                 if not self._has_initial_zones:
                     self._has_initial_zones = True
-                    _LOGGER.info("🎉 Initial zone data received for vessel %s", self.vessel_name)
                     if not self._initial_zones_loaded_event.is_set():
                         self._initial_zones_loaded_event.set()
-                
-                # Log which zones we received with state managers
-                for zone_type, zones in updated_zones.items():
-                    for zone in zones:
-                        has_state_manager = hasattr(zone, '_state_manager') and zone._state_manager is not None
-                        _LOGGER.debug("Vessel %s: Zone %s (type %s) has state manager: %s", 
-                                    self.vessel_name, zone.id, zone_type.value, has_state_manager)
                 
                 # Schedule the async call to run on the event loop from background thread
                 asyncio.run_coroutine_threadsafe(
@@ -280,11 +264,10 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 refresh_token_callback=refresh_token_callback,
             )
             
-            _LOGGER.info("✅ Successfully set up connection for vessel %s (monitor %s)", self.vessel_name, self.monitor_id)
             return True
             
         except Exception as e:
-            _LOGGER.error("❌ Failed to set up connection for vessel %s: %s", self.vessel_name, e, exc_info=True)
+            _LOGGER.error("Failed to set up connection for vessel %s: %s", self.vessel_name, e, exc_info=True)
             return False
 
     async def async_get_operation_mode_status(self):
@@ -296,7 +279,6 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def update_spa_state(self, state_data: Dict[str, Any]) -> None:
         """Update spa state data and trigger coordinator update."""
-        _LOGGER.info("Updating spa state for vessel %s", self.vessel_name)
         self._spa_state = state_data
         
         # Schedule the async call to run on the event loop from background thread
@@ -309,10 +291,10 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Wait for this vessel to receive its initial zone data."""
         try:
             await asyncio.wait_for(self._initial_zones_loaded_event.wait(), timeout=timeout)
-            _LOGGER.info("✅ Initial zone data loaded for vessel %s within timeout", self.vessel_name)
+            _LOGGER.debug("Initial zone data loaded for vessel %s within timeout", self.vessel_name)
             return True
         except asyncio.TimeoutError:
-            _LOGGER.warning("⚠️ Timeout waiting for initial zone data for vessel %s - proceeding anyway", self.vessel_name)
+            _LOGGER.warning("Timeout waiting for initial zone data for vessel %s", self.vessel_name)
             return False
 
     def get_spa_state(self) -> Dict[str, Any] | None:

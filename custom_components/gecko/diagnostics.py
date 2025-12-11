@@ -118,10 +118,14 @@ def _get_connection_diagnostics(connection_manager) -> dict[str, Any]:
             connectivity: ConnectivityStatus = connection.connectivity_status
             conn_data["connectivity_status"] = {
                 "transport_connected": connectivity.transport_connected,
-                "gateway_status": connectivity.gateway_status,
-                "vessel_status": connectivity.vessel_status,
+                "gateway_status": str(connectivity.gateway_status),
+                "vessel_status": str(connectivity.vessel_status),
                 "is_fully_connected": connectivity.is_fully_connected,
             }
+        
+        # Redact sensitive websocket URL
+        if conn_data.get("websocket_url"):
+            conn_data["websocket_url"] = "<REDACTED>"
         
         # Get gecko client info if available
         if connection.gecko_client:

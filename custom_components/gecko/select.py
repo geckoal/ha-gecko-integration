@@ -36,7 +36,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Gecko select entities."""
-    _LOGGER.debug("Setting up Gecko select entities for entry: %s", entry.entry_id)
+    _LOGGER.debug("Setting up Gecko select entities")
     
     # Get runtime data with per-vessel coordinators
     runtime_data = entry.runtime_data
@@ -61,13 +61,11 @@ async def async_setup_entry(
         )
     
     if entities:
-        _LOGGER.info("Adding %d Gecko select entities", len(entities))
+        _LOGGER.debug("Adding %d Gecko select entities", len(entities))
         async_add_entities(entities)
-    else:
-        _LOGGER.warning("No select entities to add")
 
 
-class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], SelectEntity):
+class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity, SelectEntity):
     """Representation of a Gecko watercare mode select."""
 
     def __init__(
@@ -77,7 +75,8 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
         vessel_id: str,
     ) -> None:
         """Initialize the select."""
-        super().__init__(coordinator)
+        SelectEntity.__init__(self)
+        CoordinatorEntity.__init__(self, coordinator)
         
         self._vessel_name = vessel_name
         self._vessel_id = vessel_id
@@ -144,8 +143,8 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
         if option not in WATERCARE_MODE_OPTIONS:
             _LOGGER.error("Invalid watercare mode option: %s", option)
             return
-            
-        _LOGGER.info("Setting watercare mode for %s to %s", self._attr_name, option)
+        
+        _LOGGER.debug("Setting watercare mode for %s to %s", self._attr_name, option)
         
         try:
             # Get the gecko client for this vessel
@@ -159,13 +158,13 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
                 _LOGGER.error("Operation mode controller not available for vessel %s", self._vessel_name)
                 return
                 
-            _LOGGER.info("Setting operation mode to %s for vessel %s", option, self._vessel_name)
+            _LOGGER.debug("Setting operation mode to %s for vessel %s", option, self._vessel_name)
             
             # Use the clean API to set the mode by name
             gecko_client.operation_mode_controller.set_mode_by_name(option)
             
             # Let the coordinator update handle state changes
-            _LOGGER.info("✅ Successfully sent watercare mode command for %s", self._attr_name)
+            _LOGGER.debug("Sent watercare mode command for %s", self._attr_name)
             
             # Request coordinator refresh to get updated state from the device
             await self.coordinator.async_request_refresh()

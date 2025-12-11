@@ -56,12 +56,9 @@ class ConfigFlow(
             
             # Get user ID and account information
             user_id, account_data, account_id = await self._resolve_user_and_account(data, api_client)
-            _LOGGER.debug("Resolved user_id: %s, account_id: %s", user_id, account_id)
             
             # Get vessels for the account
-            _LOGGER.info("Fetching vessels for account %s from API...", account_id)
             vessels = await api_client.async_get_vessels(account_id)
-            _LOGGER.info("API returned %d vessels: %s", len(vessels) if vessels else 0, vessels)
             
             if not vessels:
                 self.logger.warning("No vessels found for account %s", account_id)
@@ -88,7 +85,6 @@ class ConfigFlow(
                             "spa_configuration": spa_config
                         }
                         vessels_with_config.append(vessel_with_config)
-                        _LOGGER.debug("Added spa config for vessel %s: %s", vessel.get("name"), spa_config)
                     else:
                         _LOGGER.warning("No monitor ID found for vessel %s", vessel.get("name"))
                         vessels_with_config.append(vessel)  # Add without config

@@ -43,7 +43,6 @@ async def async_setup_entry(
     def discover_new_climate_entities(coordinator: GeckoVesselCoordinator) -> None:
         """Discover climate entities for temperature control zones."""
         zones = coordinator.get_zones_by_type(ZoneType.TEMPERATURE_CONTROL_ZONE)
-        _LOGGER.debug("Discovered zones for vessel %s: %s", coordinator.vessel_name, zones)
         
         # Get or create the set of added zone IDs for this coordinator
         vessel_key = f"{coordinator.entry_id}_{coordinator.vessel_id}"
@@ -63,7 +62,7 @@ async def async_setup_entry(
         
         if entities:
             async_add_entities(entities)
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Added %d climate entities for vessel %s",
                 len(entities),
                 coordinator.vessel_name,
@@ -127,19 +126,17 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
         self._attr_max_temp = self._zone.max_temperature_set_point_c
         self._attr_min_temp = self._zone.min_temperature_set_point_c
         
-        _LOGGER.info(
-            "Zone %s state: current_temp=%s, target_temp=%s, zone.set_point=%s, zone.target_temperature=%s",
+        _LOGGER.debug(
+            "Zone %s: current=%s°C, target=%s°C",
             self._zone.id,
             self._attr_current_temperature,
             self._attr_target_temperature,
-            getattr(self._zone, 'set_point', 'N/A'),
-            self._zone.target_temperature,
         )
     
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        _LOGGER.info("Updating climate entity %s from zone %s", self.entity_id, self._zone.id)
+        _LOGGER.debug("Updating climate entity %s", self.entity_id)
         self._update_from_zone()
         self.async_write_ha_state()
 
@@ -154,7 +151,7 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
                 self._zone.set_target_temperature, temperature
             )
           
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Set target temperature to %.1f°C for %s",
                 temperature,
                 self.entity_id,
