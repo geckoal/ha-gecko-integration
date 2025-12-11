@@ -67,7 +67,7 @@ async def async_setup_entry(
         _LOGGER.warning("No select entities to add")
 
 
-class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], SelectEntity):
+class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity, SelectEntity):
     """Representation of a Gecko watercare mode select."""
 
     def __init__(
@@ -77,7 +77,8 @@ class GeckoWatercareSelectEntity(GeckoEntityAvailabilityMixin, CoordinatorEntity
         vessel_id: str,
     ) -> None:
         """Initialize the select."""
-        super().__init__(coordinator)
+        SelectEntity.__init__(self)
+        CoordinatorEntity.__init__(self, coordinator)
         
         self._vessel_name = vessel_name
         self._vessel_id = vessel_id
