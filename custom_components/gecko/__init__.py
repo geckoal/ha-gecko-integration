@@ -9,6 +9,7 @@ import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow, config_validation as cv, device_registry as dr
 
 
@@ -91,7 +92,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Create devices for each vessel/spa and set up geckoIotClient
-    await _setup_vessels_and_gecko_clients(hass, entry)
+    # If connection fails, raise ConfigEntryNotReady so HA retries automatically
+    try:
+        await _setup_vessels_and_gecko_clients(hass, entry)
+    except Exception as ex:
+        raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
@@ -122,6 +127,8 @@ async def _setup_vessels_and_gecko_clients(hass: HomeAssistant, entry: ConfigEnt
             await _setup_vessel_gecko_client(vessel, api_client, coordinator)
         except Exception as e:
             _LOGGER.error("Failed to setup vessel %s: %s", vessel_name, e, exc_info=True)
+            # Re-raise to allow async_setup_entry to handle with ConfigEntryNotReady
+            raise
 
 
 def _setup_vessel_device(entry: ConfigEntry, vessel: dict, device_registry: dr.DeviceRegistry) -> None:
