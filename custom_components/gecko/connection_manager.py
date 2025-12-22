@@ -170,6 +170,94 @@ class GeckoConnectionManager:
                 # Remove from connections
                 del self._connections[monitor_id]
     
+    async def async_reconnect_monitor(self, monitor_id: str) -> bool:
+        """Reconnect a specific monitor connection.
+        
+        This method disconnects the existing connection (if any) and establishes
+        a new connection using a fresh token from the refresh callback.
+        
+        Returns True if reconnection was successful, False otherwise.
+        """
+        if monitor_id not in self._connections:
+            _LOGGER.warning("No existing connection found for monitor %s to reconnect", monitor_id)
+            return False
+        
+        connection = self._connections[monitor_id]
+        
+        try:
+            # Get the token refresh callback from the existing connection
+            refresh_callback = None
+            if hasattr(connection.gecko_client, 'transporter') and hasattr(connection.gecko_client.transporter, '_token_refresh_callback'):
+                refresh_callback = connection.gecko_client.transporter._token_refresh_callback
+            
+            if not refresh_callback or not callable(refresh_callback):
+                _LOGGER.error("No token refresh callback available for monitor %s - cannot reconnect", monitor_id)
+                return False
+            
+            # Get fresh websocket URL with new token
+            _LOGGER.debug("Getting fresh token for monitor %s", monitor_id)
+            new_url = await self.hass.async_add_executor_job(refresh_callback, monitor_id)
+            
+            if not new_url or not isinstance(new_url, str):
+                _LOGGER.error("Failed to get new websocket URL for monitor %s", monitor_id)
+                return False
+            
+            # Disconnect existing connection
+            async with self._connection_lock:
+                if connection.is_connected and connection.gecko_client:
+                    try:
+                        await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
+                    except Exception as e:
+                        _LOGGER.warning("Error disconnecting monitor %s during reconnect: %s", monitor_id, e)
+                    connection.is_connected = False
+                
+                # Brief delay before reconnecting
+                await asyncio.sleep(RECONNECT_DELAY)
+                
+                # Create new transporter and client with fresh URL
+                transporter = MqttTransporter(
+                    broker_url=new_url,
+                    monitor_id=monitor_id,
+                    token_refresh_callback=refresh_callback
+                )
+                
+                gecko_client = GeckoIotClient(monitor_id, transporter, config_timeout=CONFIG_TIMEOUT)
+                
+                # Set up zone update handler to distribute to all callbacks
+                def on_zone_update(updated_zones):
+                    for callback in connection.update_callbacks:
+                        try:
+                            callback(updated_zones)
+                        except Exception as e:
+                            _LOGGER.error("Error in zone update callback for monitor %s: %s", monitor_id, e)
+                
+                # Set up connectivity update handler
+                def on_connectivity_update(connectivity_status):
+                    connection.connectivity_status = connectivity_status
+                    if hasattr(connectivity_status, 'vessel_status'):
+                        vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
+                        if vessel_running and not connection.is_connected:
+                            _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
+                
+                gecko_client.on_zone_update(on_zone_update)
+                gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+                
+                # Update connection object with new client and URL
+                connection.gecko_client = gecko_client
+                connection.websocket_url = new_url
+                
+                # Connect with fresh token
+                await self.hass.async_add_executor_job(gecko_client.connect)
+                connection.is_connected = True
+                
+                _LOGGER.info("Successfully reconnected monitor %s", monitor_id)
+                return True
+                
+        except Exception as e:
+            _LOGGER.error("Failed to reconnect monitor %s: %s", monitor_id, e, exc_info=True)
+            connection.is_connected = False
+            return False
+    
     async def _async_shutdown(self, event: Event) -> None:
         """Shutdown all connections."""
         # Disconnect all monitors
