@@ -19,7 +19,9 @@ class GeckoPKCEOAuth2Implementation(config_entry_oauth2_flow.LocalOAuth2Implemen
         """Extra data for the authorize URL."""
         data = super().extra_authorize_data  # This includes code_challenge and code_challenge_method
         data.update({
-            "scope": "openid profile email",
+            # offline_access is REQUIRED to receive a refresh_token from Auth0
+            # Without it, only an access_token is returned which expires and cannot be renewed
+            "scope": "openid profile email offline_access",
             "audience": "https://api.geckowatermonitor.com"
         })
         return data
