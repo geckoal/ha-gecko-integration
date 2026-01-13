@@ -92,10 +92,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Create devices for each vessel/spa and set up geckoIotClient
-    # If connection fails, raise ConfigEntryNotReady so HA retries automatically
+    # Use specific exceptions to trigger Home Assistant's retry mechanism only for
+    # connection-related issues, not programming errors
     try:
         await _setup_vessels_and_gecko_clients(hass, entry)
-    except Exception as ex:
+    except (ConnectionError, TimeoutError, OSError) as ex:
+        # These indicate temporary connection issues that should trigger retry
+        raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
+    except KeyError as ex:
+        # Missing required data (e.g., 'refresh_token') indicates auth issues
         raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available

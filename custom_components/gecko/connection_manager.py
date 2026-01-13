@@ -42,6 +42,7 @@ class GeckoMonitorConnection:
     update_callbacks: list[Callable[[dict], None]] = field(default_factory=list)
     is_connected: bool = False
     connectivity_status: Any = None  # ConnectivityStatus from geckoIotClient
+    refresh_token_callback: Callable[[str | None], str] | None = None  # Store callback for reconnection
     
 
 class GeckoConnectionManager:
@@ -58,6 +59,42 @@ class GeckoConnectionManager:
         self._cleanup_listener = hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, self._async_shutdown
         )
+    
+    def _setup_client_handlers(
+        self,
+        gecko_client: Any,
+        connection: GeckoMonitorConnection,
+        monitor_id: str,
+    ) -> None:
+        """Set up zone update and connectivity handlers for a gecko client.
+        
+        This helper method extracts the common handler setup logic used when
+        creating or reconnecting monitor connections, following the DRY principle.
+        """
+        # Set up zone update handler to distribute to all callbacks
+        def on_zone_update(updated_zones):
+            # Copy callbacks list to avoid race conditions during iteration
+            callbacks = list(connection.update_callbacks)
+            for callback in callbacks:
+                try:
+                    callback(updated_zones)
+                except Exception as e:
+                    _LOGGER.error("Error in zone update callback for monitor %s: %s", monitor_id, e)
+        
+        # Set up connectivity update handler
+        def on_connectivity_update(connectivity_status):
+            # Store connectivity status in connection for easy access
+            connection.connectivity_status = connectivity_status
+            
+            # Update connection status based on connectivity
+            if hasattr(connectivity_status, 'vessel_status'):
+                # If vessel is running but transporter is not connected, we may need to refresh token
+                vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
+                if vessel_running and not connection.is_connected:
+                    _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
+        
+        gecko_client.on_zone_update(on_zone_update)
+        gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
     
     async def async_get_or_create_connection(
         self,
@@ -91,40 +128,21 @@ class GeckoConnectionManager:
                                               transporter, 
                                               config_timeout=CONFIG_TIMEOUT)
                 
-                # Create connection object
+                # Create connection object with refresh callback for reconnection
                 connection = GeckoMonitorConnection(
                     monitor_id=monitor_id,
                     gecko_client=gecko_client,
                     websocket_url=websocket_url,
                     vessel_name=vessel_name,
+                    refresh_token_callback=refresh_token_callback,
                 )
                 
                 # Add callback if provided
                 if update_callback:
                     connection.update_callbacks.append(update_callback)
                 
-                # Set up zone update handler to distribute to all callbacks
-                def on_zone_update(updated_zones):
-                    for callback in connection.update_callbacks:
-                        try:
-                            callback(updated_zones)
-                        except Exception as e:
-                            _LOGGER.error("Error in zone update callback for monitor %s: %s", monitor_id, e)
-                
-                # Set up connectivity update handler
-                def on_connectivity_update(connectivity_status):
-                    # Store connectivity status in connection for easy access
-                    connection.connectivity_status = connectivity_status
-                    
-                    # Update connection status based on connectivity
-                    if hasattr(connectivity_status, 'vessel_status'):
-                        # If vessel is running but transporter is not connected, we may need to refresh token
-                        vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-                        if vessel_running and not connection.is_connected:
-                            _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
-                
-                gecko_client.on_zone_update(on_zone_update)
-                gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+                # Set up handlers using the helper method
+                self._setup_client_handlers(gecko_client, connection, monitor_id)
                 
                 # Connect using executor since connect() is synchronous
                 await self.hass.async_add_executor_job(gecko_client.connect)
@@ -144,15 +162,19 @@ class GeckoConnectionManager:
         """Get existing connection for a monitor."""
         return self._connections.get(monitor_id)
     
-    def remove_callback(self, monitor_id: str, callback: Callable[[dict], None]) -> None:
-        """Remove a callback from a monitor connection."""
-        if monitor_id in self._connections:
-            connection = self._connections[monitor_id]
-            if callback in connection.update_callbacks:
-                connection.update_callbacks.remove(callback)
-                
-                # If no more callbacks, we could optionally disconnect
-                # For now, keep connections alive as they may be reused
+    async def async_remove_callback(self, monitor_id: str, callback: Callable[[dict], None]) -> None:
+        """Remove a callback from a monitor connection.
+        
+        Uses the connection lock to prevent race conditions with callback iteration.
+        """
+        async with self._connection_lock:
+            if monitor_id in self._connections:
+                connection = self._connections[monitor_id]
+                if callback in connection.update_callbacks:
+                    connection.update_callbacks.remove(callback)
+                    
+                    # If no more callbacks, we could optionally disconnect
+                    # For now, keep connections alive as they may be reused
     
     async def async_disconnect_monitor(self, monitor_id: str) -> None:
         """Disconnect and remove a monitor connection."""
@@ -273,39 +295,46 @@ class GeckoConnectionManager:
                 _LOGGER.error("Error in shutdown callback: %s", e)
     
     async def async_refresh_connection_token(self, monitor_id: str) -> bool:
-        """Refresh the token for a specific connection."""
-        if monitor_id not in self._connections:
-            _LOGGER.error("No connection found for monitor %s to refresh", monitor_id)
-            return False
+        """Refresh the token for a specific connection.
         
-        connection = self._connections[monitor_id]
-        
-        try:
-            # Disconnect current connection
-            if connection.gecko_client and connection.is_connected:
-                await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
-                connection.is_connected = False
+        This method acquires the connection lock at entry to prevent race conditions
+        where the connection could be modified or removed by concurrent operations.
+        """
+        # Acquire lock at method entry to prevent race conditions
+        async with self._connection_lock:
+            if monitor_id not in self._connections:
+                _LOGGER.error("No connection found for monitor %s to refresh", monitor_id)
+                return False
             
-            # Wait briefly before getting new token
-            await asyncio.sleep(TOKEN_REFRESH_DELAY)
+            connection = self._connections[monitor_id]
+            
+            try:
+                # Disconnect current connection
+                if connection.gecko_client and connection.is_connected:
+                    await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
+                    connection.is_connected = False
+                
+                # Wait briefly before getting new token
+                await asyncio.sleep(TOKEN_REFRESH_DELAY)
 
-            # Get fresh token via the refresh callback if available
-            new_url = None
-            refresh_callback = None
-            if hasattr(connection.gecko_client, 'transporter') and hasattr(connection.gecko_client.transporter, '_token_refresh_callback'):
-                refresh_callback = connection.gecko_client.transporter._token_refresh_callback
-            
-            if refresh_callback and callable(refresh_callback):
+                # Use the stored refresh callback from connection object (avoids accessing private attributes)
+                refresh_callback = connection.refresh_token_callback
+                
+                if not refresh_callback or not callable(refresh_callback):
+                    _LOGGER.warning("No token refresh callback available for monitor %s", monitor_id)
+                    return False
+
                 # Run the callback in executor since it might be blocking
                 new_url = await self.hass.async_add_executor_job(refresh_callback, monitor_id)
-                if new_url and isinstance(new_url, str) and new_url != connection.websocket_url:
+                
+                if not new_url or not isinstance(new_url, str):
+                    _LOGGER.error("Failed to get new websocket URL for monitor %s", monitor_id)
+                    return False
+                
+                if new_url != connection.websocket_url:
                     connection.websocket_url = new_url
-            else:
-                _LOGGER.warning("No token refresh callback available for monitor %s", monitor_id)
-                return False
 
-            # Re-instantiate transporter and gecko client with new token
-            if new_url:
+                # Re-instantiate transporter and gecko client with new token
                 transporter = MqttTransporter(
                     broker_url=new_url,
                     monitor_id=monitor_id,
@@ -315,42 +344,27 @@ class GeckoConnectionManager:
                 # Create new gecko client
                 gecko_client = GeckoIotClient(monitor_id, transporter, config_timeout=CONFIG_TIMEOUT)
                 
-                # Setup zone update handler to distribute to all callbacks
-                def on_zone_update(updated_zones):
-                    for callback in connection.update_callbacks:
-                        try:
-                            callback(updated_zones)
-                        except Exception as e:
-                            _LOGGER.error("Error in zone update callback for monitor %s: %s", monitor_id, e)
-                
-                # Set up connectivity update handler
-                def on_connectivity_update(connectivity_status):
-                    connection.connectivity_status = connectivity_status
-                    
-                    vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-                    if vessel_running and not connection.is_connected:
-                        _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
-                
-                gecko_client.on_zone_update(on_zone_update)
-                gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+                # Set up handlers using the helper method (DRY principle)
+                self._setup_client_handlers(gecko_client, connection, monitor_id)
                 
                 # Update connection with new client
                 connection.gecko_client = gecko_client
 
-            # Wait briefly before reconnecting
-            await asyncio.sleep(RECONNECT_DELAY)
+                # Wait briefly before reconnecting
+                await asyncio.sleep(RECONNECT_DELAY)
 
-            # Reconnect with fresh token
-            await self.hass.async_add_executor_job(connection.gecko_client.connect)
-            connection.is_connected = True
+                # Reconnect with fresh token
+                await self.hass.async_add_executor_job(connection.gecko_client.connect)
+                connection.is_connected = True
 
-            _LOGGER.info("Refreshed and reconnected monitor %s", monitor_id)
-            return True
+                _LOGGER.info("Refreshed and reconnected monitor %s", monitor_id)
+                return True
 
-        except Exception as e:
-            _LOGGER.error("Failed to refresh token for monitor %s: %s", monitor_id, e, exc_info=True)
-            connection.is_connected = False
-            return False
+            except Exception as e:
+                _LOGGER.error("Failed to refresh token for monitor %s: %s", monitor_id, e, exc_info=True)
+                # State is already set to False within the lock if disconnect succeeded
+                # No need to set it again outside the lock (fixes race condition)
+                return False
     
     def add_shutdown_callback(self, callback: Callable[[], None]) -> None:
         """Add a callback to be called during shutdown."""
