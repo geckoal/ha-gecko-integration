@@ -30,7 +30,7 @@ class OAuthGeckoApi(GeckoApiClient):
         """Return a valid access token for the Gecko API."""
         await self._oauth_session.async_ensure_token_valid()
         return self._oauth_session.token["access_token"]
-    
+
 class ConfigFlowGeckoApi(GeckoApiClient):
     """Profile gecko authentication before a ConfigEntry exists.
 

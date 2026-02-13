@@ -56,7 +56,7 @@ async def async_setup_entry(
 class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
     """Representation of a Gecko pump fan (multi-speed or variable speed)."""
     coordinator: GeckoVesselCoordinator
-    
+
     def __init__(
         self,
         coordinator: GeckoVesselCoordinator,
@@ -76,24 +76,24 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
             identifiers={(DOMAIN, str(coordinator.vessel_id))},
         )
         self._attr_supported_features = (
-            FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON 
+            FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
         )
-        
+
         if FlowZoneCapabilities.SUPPORTS_SPEED_PRESETS in self._zone.capabilities:
             self._attr_supported_features |= FanEntityFeature.SET_SPEED
-            
+
             self._speed_list = [preset.name for preset in self._zone.presets]
-        
+
             self._attr_speed_list = self._speed_list
-        
+
         # Set icon based on zone type
         self._attr_icon = self._get_icon_for_zone_type()
-        
+
         # Initialize state and availability from zone (will be set by async_added_to_hass event registration)
         self._attr_available = False
         self._update_from_zone()
- 
-        
+
+
     def _get_icon_for_zone_type(self) -> str:
         """Return icon based on flow zone type."""
         zone_type = self._zone.type
@@ -103,18 +103,24 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
             return "mdi:wind-power"
         else:  # FLOW_ZONE (pump)
             return "mdi:pump"
-    
+
     async def async_added_to_hass(self) -> None:
         """Register update callback when entity is added to hass."""
         await super().async_added_to_hass()
         self.coordinator.async_add_listener(self._handle_coordinator_update)
-        
-  
+
+
     def _update_from_zone(self) -> None:
         """Update state attributes from zone data."""
         self._attr_is_on = self._zone.active
         self._attr_percentage = int(self._zone.speed) if self._zone.speed is not None else 0
-        
+
+        if not hasattr(self, "_attr_extra_state_attributes"):
+            self._attr_extra_state_attributes = dict()
+
+        if self._zone.initiators is not None:
+            self._attr_extra_state_attributes['initiators'] = list(map(str, self._zone.initiators))
+
         if isinstance(self._zone.speed, (int, float)):
             if self._zone.speed < 34:
                 self._attr_speed = "low"
@@ -122,17 +128,17 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
                 self._attr_speed = "medium"
             elif self._zone.speed <= 100:
                 self._attr_speed = "high"
-        
+
         if not self._zone.active:
             self._attr_speed = "off"
             self._attr_is_on = False
-    
+
     @callback
     def _handle_coordinator_update(self) -> None:
         _LOGGER.debug("Updating fan %s: is_on=%s, speed=%s", self._attr_name, self._attr_is_on, self._attr_speed)
         self._update_from_zone()
         self.async_write_ha_state()
-        
+
     async def async_turn_on(self, percentage: int | None = None, preset_mode: str | None = None, **kwargs) -> None:
         """Turn the fan on. Optionally set speed by percentage."""
         _LOGGER.debug("Turning on pump %s", self._attr_name)
@@ -146,16 +152,16 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
             else:
                 speed = "high"
         await self.async_set_speed(speed)
-        
+
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the fan off."""
         self._zone.deactivate()
-        
+
     @property
     def is_on(self) -> bool | None:
         """Return true if the entity is on."""
-        return self._attr_is_on 
-        
+        return self._attr_is_on
+
     async def async_set_speed(self, speed: str) -> None:
         # Map string speed to integer value expected by Gecko API
         speed_map = {

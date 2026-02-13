@@ -35,31 +35,31 @@ async def async_setup_entry(
 ) -> None:
     """Set up Gecko climate entities from a config entry."""
     coordinators = config_entry.runtime_data.coordinators
-    
+
     # Track which zones have already been added for each coordinator
     added_zones: dict[str, set[int]] = {}
-    
+
     @callback
     def discover_new_climate_entities(coordinator: GeckoVesselCoordinator) -> None:
         """Discover climate entities for temperature control zones."""
         zones = coordinator.get_zones_by_type(ZoneType.TEMPERATURE_CONTROL_ZONE)
-        
+
         # Get or create the set of added zone IDs for this coordinator
         vessel_key = f"{coordinator.entry_id}_{coordinator.vessel_id}"
         if vessel_key not in added_zones:
             added_zones[vessel_key] = set()
-        
+
         entities = []
         for zone in zones:
             if not hasattr(zone, "id"):
                 _LOGGER.warning("Zone object missing 'id' attribute: %s", zone)
                 continue
-            
+
             # Only add if not already added
             if zone.id not in added_zones[vessel_key]:
                 entities.append(GeckoClimate(coordinator, zone))
                 added_zones[vessel_key].add(zone.id)
-        
+
         if entities:
             async_add_entities(entities)
             _LOGGER.debug(
@@ -69,7 +69,7 @@ async def async_setup_entry(
             )
         else:
             _LOGGER.debug("No new climate entities to add for vessel %s", coordinator.vessel_name)
-    
+
     # Set up initial entities and register for updates
     for coordinator in coordinators:
         discover_new_climate_entities(coordinator)
@@ -80,7 +80,7 @@ async def async_setup_entry(
 
 class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], ClimateEntity):
     """Representation of a Gecko climate control."""
-    
+
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
@@ -101,17 +101,17 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
             identifiers={(DOMAIN, str(coordinator.vessel_id))}
         )
         self._attr_name = f"Thermostat {zone.id}"
-        
+
         # Set temperature limits
         self._attr_min_temp = self._zone.min_temperature_set_point_c
         self._attr_max_temp = self._zone.max_temperature_set_point_c
-        
+
         # Initialize availability (will be set by async_added_to_hass event registration)
         self._attr_available = False
-        
+
         # Initialize state from zone
         self._update_from_zone()
-    
+
     def _update_from_zone(self) -> None:
         """Update state attributes from zone data."""
         if self._zone.status:
@@ -120,19 +120,19 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
             )
         else:
             self._attr_hvac_action = HVACAction.IDLE
-        
+
         self._attr_current_temperature = self._zone.temperature
         self._attr_target_temperature = self._zone.target_temperature
         self._attr_max_temp = self._zone.max_temperature_set_point_c
         self._attr_min_temp = self._zone.min_temperature_set_point_c
-        
+
         _LOGGER.debug(
             "Zone %s: current=%s°C, target=%s°C",
             self._zone.id,
             self._attr_current_temperature,
             self._attr_target_temperature,
         )
-    
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -144,13 +144,13 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
         """Set new target temperature."""
         if (temperature := kwargs.get("temperature")) is None:
             return
-        
+
         try:
             # set_target_temperature is a synchronous method, run in executor
             await self.hass.async_add_executor_job(
                 self._zone.set_target_temperature, temperature
             )
-          
+
             _LOGGER.debug(
                 "Set target temperature to %.1f°C for %s",
                 temperature,
@@ -160,7 +160,7 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
             _LOGGER.error(
                 "Error setting temperature for %s: %s", self.entity_id, err
             )
-    
+
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         if hvac_mode != HVACMode.HEAT:
@@ -169,6 +169,6 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
                 translation_domain=DOMAIN,
                 translation_key="unsupported_hvac_mode",
             )
-        
+
         # HEAT mode is the only supported mode and is always active
         _LOGGER.debug("HVAC mode set to HEAT for %s (no action required)", self.entity_id)

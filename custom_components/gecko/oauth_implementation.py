@@ -1,8 +1,8 @@
 """OAuth2 implementation for the Gecko integration.
 
 This module provides a PKCE-based OAuth2 implementation with a hardcoded
-public Client ID. PKCE (Proof Key for Code Exchange) uses cryptographic 
-code challenges instead of a static client secret, making it secure even 
+public Client ID. PKCE (Proof Key for Code Exchange) uses cryptographic
+code challenges instead of a static client secret, making it secure even
 with a public Client ID.
 
 No Application Credentials setup is required - the integration works out of the box!

@@ -23,7 +23,7 @@ class GeckoEntityAvailabilityMixin:
     @property
     def available(self) -> bool:
         """Return if entity is available.
-        
+
         Override the cached property to make availability truly dynamic.
         """
         return self._attr_available
@@ -57,7 +57,7 @@ class GeckoEntityAvailabilityMixin:
 
     def _on_connectivity_update(self, connectivity_status) -> None:
         """Handle connectivity update events from gecko_iot_client.
-        
+
         This callback is invoked from gecko_iot_client's background thread,
         so we must schedule the state update on the event loop.
         """
@@ -86,7 +86,7 @@ class GeckoEntityAvailabilityMixin:
         gecko_client = self._get_gecko_client_sync()
         if not gecko_client:
             return False
-        
+
         return gecko_client.is_connected
 
     def _get_gecko_client_sync(self) -> GeckoIotClient | None:
@@ -99,4 +99,3 @@ class GeckoEntityAvailabilityMixin:
 
         connection = connection_manager._connections.get(self.coordinator.monitor_id)
         return connection.gecko_client if connection else None
-

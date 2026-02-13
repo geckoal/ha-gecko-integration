@@ -22,13 +22,13 @@ def _get_coordinator_diagnostics(coordinator) -> dict[str, Any]:
     """Get coordinator diagnostics."""
     if not coordinator:
         return {}
-    
+
     return {
         "managed_monitors": list(coordinator._managed_monitors),
         "monitors_with_zones": list(coordinator._monitors_with_zones),
         "zones_by_monitor": {
             monitor_id: {
-                zone_type.value: len(zones) 
+                zone_type.value: len(zones)
                 for zone_type, zones in monitor_zones.items()
             }
             for monitor_id, monitor_zones in coordinator._zones_by_monitor.items()
@@ -49,7 +49,7 @@ def _get_gecko_client_info(gecko_client: GeckoIotClient) -> dict[str, Any]:
             "has_configuration": gecko_client._configuration is not None,
             "has_state": gecko_client._state is not None,
         }
-        
+
         # Add connectivity status details
         if gecko_client.connectivity_status:
             connectivity = gecko_client.connectivity_status
@@ -59,7 +59,7 @@ def _get_gecko_client_info(gecko_client: GeckoIotClient) -> dict[str, Any]:
                 "vessel_status": connectivity.vessel_status,
                 "is_fully_connected": connectivity.is_fully_connected,
             }
-        
+
         # Add operation mode information
         if gecko_client.operation_mode_controller:
             omc = gecko_client.operation_mode_controller
@@ -68,14 +68,14 @@ def _get_gecko_client_info(gecko_client: GeckoIotClient) -> dict[str, Any]:
                 "mode_name": omc.mode_name,
                 "is_energy_saving": omc.is_energy_saving,
             }
-        
+
         # Add zone information
         if gecko_client._zones:
             client_info["zones"] = {
                 zone_type.value: len(zones)
                 for zone_type, zones in gecko_client._zones.items()
             }
-        
+
         # Add transporter information
         if gecko_client.transporter:
             transporter = gecko_client.transporter
@@ -91,7 +91,7 @@ def _get_gecko_client_info(gecko_client: GeckoIotClient) -> dict[str, Any]:
             if mqtt_client and hasattr(mqtt_client, 'is_connected'):
                 transporter_info["mqtt_connected"] = mqtt_client.is_connected()
             client_info["transporter"] = transporter_info
-        
+
         return client_info
     except Exception as e:
         _LOGGER.exception("Error getting gecko client info")
@@ -102,7 +102,7 @@ def _get_connection_diagnostics(connection_manager) -> dict[str, Any]:
     """Get connection diagnostics."""
     if not connection_manager:
         return {}
-    
+
     connections = {}
     for monitor_id, connection in connection_manager._connections.items():
         conn_data = {
@@ -112,7 +112,7 @@ def _get_connection_diagnostics(connection_manager) -> dict[str, Any]:
             "websocket_url": connection.websocket_url[:50] + "..." if connection.websocket_url else None,
             "callback_count": len(connection.update_callbacks),
         }
-        
+
         # Add connectivity status from connection (stored from connectivity updates)
         if connection.connectivity_status:
             connectivity: ConnectivityStatus = connection.connectivity_status
@@ -122,17 +122,17 @@ def _get_connection_diagnostics(connection_manager) -> dict[str, Any]:
                 "vessel_status": str(connectivity.vessel_status),
                 "is_fully_connected": connectivity.is_fully_connected,
             }
-        
+
         # Redact sensitive websocket URL
         if conn_data.get("websocket_url"):
             conn_data["websocket_url"] = "<REDACTED>"
-        
+
         # Get gecko client info if available
         if connection.gecko_client:
             conn_data["gecko_client"] = _get_gecko_client_info(connection.gecko_client)
-        
+
         connections[monitor_id] = conn_data
-    
+
     return connections
 
 
@@ -140,11 +140,11 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    
+
     # Get coordinator and connection manager
     coordinator = hass.data.get(f"{DOMAIN}_coordinator_{config_entry.entry_id}")
     connection_manager = await async_get_connection_manager(hass)
-    
+
     diagnostics_data = {
         "config_entry": {
             "entry_id": config_entry.entry_id,
@@ -156,12 +156,12 @@ async def async_get_config_entry_diagnostics(
         "connections": _get_connection_diagnostics(connection_manager),
         "runtime_data": {},
     }
-    
+
     # Get runtime data (API client info)
     if hasattr(config_entry, "runtime_data") and config_entry.runtime_data:
         api_client = config_entry.runtime_data
         diagnostics_data["runtime_data"] = {
             "api_client_type": type(api_client).__name__,
         }
-    
+
     return diagnostics_data

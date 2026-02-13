@@ -47,7 +47,7 @@ class GeckoRuntimeData:
 
 
 # List the platforms that this integration supports.
-_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Platform.SELECT, Platform.BINARY_SENSOR]  
+_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Platform.SELECT, Platform.BINARY_SENSOR]
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -69,13 +69,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     vessels_count = len(vessels)
     if vessels_count == 0:
         _LOGGER.warning("No vessels found in config entry")
-    
+
     coordinators = []
     for vessel in vessels:
         vessel_id = vessel.get("vesselId")
         monitor_id = vessel.get("monitorId")
         vessel_name = vessel.get("name", f"Vessel {vessel_id}")
-        
+
         coordinator = GeckoVesselCoordinator(
             hass=hass,
             entry_id=entry.entry_id,
@@ -84,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vessel_name=vessel_name,
         )
         coordinators.append(coordinator)
-    
+
     # Store in runtime data
     entry.runtime_data = GeckoRuntimeData(
         api_client=api_client,
@@ -105,7 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Set up platforms immediately - entities will be created when zone data becomes available
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
-    
+
     _LOGGER.info("Gecko integration setup completed for %d vessels", vessels_count)
 
     return True
@@ -115,18 +115,18 @@ async def _setup_vessels_and_gecko_clients(hass: HomeAssistant, entry: ConfigEnt
     """Set up devices for each vessel/spa and geckoIotClient connections."""
     runtime_data: GeckoRuntimeData = entry.runtime_data
     vessels = entry.data.get("vessels", [])
-    
+
     if not vessels:
         _LOGGER.warning("No vessels found in config entry data!")
         return
-    
+
     device_registry = dr.async_get(hass)
     api_client = runtime_data.api_client
-    
+
     # Match each vessel with its coordinator
     for i, (vessel, coordinator) in enumerate(zip(vessels, runtime_data.coordinators)):
         vessel_name = vessel.get("name", f"Vessel {i}")
-        
+
         try:
             _setup_vessel_device(entry, vessel, device_registry)
             await _setup_vessel_gecko_client(vessel, api_client, coordinator)
@@ -143,10 +143,10 @@ def _setup_vessel_device(entry: ConfigEntry, vessel: dict, device_registry: dr.D
     vessel_type = vessel.get("type", "Unknown")
     protocol_name = vessel.get("protocolName", "Unknown")
     monitor_id = vessel.get("monitorId")
-    
+
     # Create a more descriptive device name
     device_name = vessel_name
-    
+
     # Create device entry for this spa/vessel
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -164,30 +164,30 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
     vessel_id = vessel.get("vesselId")
     vessel_name = vessel.get("name", f"Vessel {vessel_id}")
     monitor_id = vessel.get("monitorId")
-    
+
     if not monitor_id:
         _LOGGER.error("No monitor ID found for vessel %s. Available keys: %s", vessel_name, list(vessel.keys()))
         return
-    
+
     try:
         livestream_data = await api_client.async_get_monitor_livestream(monitor_id)
         websocket_url = livestream_data.get("brokerUrl")
-        
+
         if not websocket_url:
             _LOGGER.error("No WebSocket URL found in livestream response for monitor %s", monitor_id)
             return
-        
+
         # Don't create zones from spa configuration in coordinator - let GeckoIotClient handle this
         # The coordinator will get zones from the GeckoIotClient once it's connected and configured
-        
+
         # Use the singleton connection manager through the coordinator
         success = await coordinator.async_setup_monitor_connection(
             websocket_url=websocket_url
         )
-        
+
         if not success:
             raise ConnectionError(f"Failed to setup connection for monitor {monitor_id}")
-            
+
     except Exception as ex:
         _LOGGER.error("Failed to set up connection for monitor %s: %s", monitor_id, ex, exc_info=True)
         raise
@@ -199,7 +199,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime_data: GeckoRuntimeData = entry.runtime_data
     for coordinator in runtime_data.coordinators:
         await coordinator.async_shutdown()
-    
+
     # Disconnect all monitors from the connection manager
     # This ensures fresh connections on reload with updated config/tokens
     try:
@@ -211,5 +211,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await connection_manager.async_disconnect_monitor(monitor_id)
     except Exception as ex:
         _LOGGER.error("Error disconnecting monitors during unload: %s", ex)
-    
+
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
