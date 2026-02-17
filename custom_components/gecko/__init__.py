@@ -9,7 +9,7 @@ import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow, config_validation as cv, device_registry as dr
 
 
@@ -101,7 +101,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
     except KeyError as ex:
         # Missing required data (e.g., 'refresh_token') indicates auth issues
-        raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
+        # that won't resolve on retry — trigger reauth instead
+        raise ConfigEntryAuthFailed(
+            f"Authentication data incomplete ({ex}). Please re-authenticate."
+        ) from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)

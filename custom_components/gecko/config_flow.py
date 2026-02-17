@@ -1,8 +1,10 @@
 """Config flow for Gecko."""
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers import config_entry_oauth2_flow, aiohttp_client
 
 from .const import DOMAIN, OAUTH2_AUTHORIZE, OAUTH2_CLIENT_ID, OAUTH2_TOKEN
@@ -17,7 +19,10 @@ class ConfigFlow(
     """Config flow to handle Gecko OAuth2 authentication."""
 
     DOMAIN = DOMAIN
-    
+
+    # Reauth support: store the entry being re-authenticated
+    reauth_entry = None
+
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         # Register the hardcoded OAuth implementation if not already registered
@@ -43,8 +48,50 @@ class ConfigFlow(
                 ),
             )
     
+    # ── Reauth flow ─────────────────────────────────────────────────────
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle re-authentication when the token can no longer be refreshed."""
+        self.reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm re-authentication with the user."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                description_placeholders={
+                    "title": self.reauth_entry.title if self.reauth_entry else "Gecko"
+                },
+            )
+
+        # Register implementation and kick off the OAuth flow
+        await self.async_register_implementation()
+        return await super().async_step_user(user_input)
+
+    # ── Entry creation / update ─────────────────────────────────────────
+
     async def async_oauth_create_entry(self, data: dict):
-        """Create an entry after OAuth authentication."""
+        """Create an entry after OAuth authentication, or update an existing one on reauth."""
+
+        # ── Reauth path: update the existing entry with the new token ───
+        if self.reauth_entry is not None:
+            # Merge the new token into the existing config entry data so we
+            # preserve vessels, account info, etc. that were stored at first setup.
+            new_data = {**self.reauth_entry.data, "token": data["token"]}
+            self.hass.config_entries.async_update_entry(
+                self.reauth_entry, data=new_data
+            )
+            await self.hass.config_entries.async_reload(self.reauth_entry.entry_id)
+            return self.async_abort(reason="reauth_successful")
+
+        # ── Normal first-time setup path ────────────────────────────────
         # Get available vessels from the cloud API
         try:
             # Create a simple API client using just the access token for initial API calls
