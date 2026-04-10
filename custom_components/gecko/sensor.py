@@ -24,8 +24,10 @@ from .entity import GeckoEntityAvailabilityMixin
 from .telemetry import (
     FLOW_SPEED_MODE_OPTIONS,
     derive_flow_speed_mode,
+    get_flow_initiators,
+    get_flow_speed_step_values,
+    get_supported_flow_speed_modes,
     is_manual_flow_demand,
-    normalize_initiators,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -179,12 +181,15 @@ class GeckoFlowSpeedModeSensor(
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         """Return additional flow telemetry."""
+        spa_state = self.coordinator.get_spa_state()
         return {
             "active": self._zone.active,
             "raw_speed": self._zone.speed,
             "zone_type": self._zone.type.value,
-            "manual_demand": is_manual_flow_demand(self._zone),
-            "initiators": sorted(normalize_initiators(self._zone.initiators_)),
+            "manual_demand": is_manual_flow_demand(self._zone, spa_state),
+            "initiators": sorted(get_flow_initiators(self._zone, spa_state)),
+            "speed_steps": list(get_flow_speed_step_values(self._zone)),
+            "supported_speed_modes": list(get_supported_flow_speed_modes(self._zone)),
         }
 
     @callback

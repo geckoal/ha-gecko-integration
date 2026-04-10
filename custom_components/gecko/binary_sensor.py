@@ -23,7 +23,7 @@ from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .connection_manager import GECKO_CONNECTION_MANAGER_KEY
 from .entity import GeckoEntityAvailabilityMixin
-from .telemetry import is_manual_flow_demand
+from .telemetry import get_flow_initiators, is_manual_flow_demand
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -221,12 +221,14 @@ class GeckoSpaInUseBinarySensor(
         self._active_light_zone_ids: list[str] = []
         self._manual_flow_zone_ids: list[str] = []
         self._active_flow_zone_ids: list[str] = []
+        self._flow_initiators_by_zone_id: dict[str, list[str]] = {}
         self._update_state()
 
     def _update_state(self) -> None:
         """Update the derived spa-in-use state."""
         light_zones = self.coordinator.get_zones_by_type(ZoneType.LIGHTING_ZONE)
         flow_zones = self.coordinator.get_zones_by_type(ZoneType.FLOW_ZONE)
+        spa_state = self.coordinator.get_spa_state()
 
         self._active_light_zone_ids = [
             str(zone.id) for zone in light_zones if getattr(zone, "active", False)
@@ -234,10 +236,15 @@ class GeckoSpaInUseBinarySensor(
         self._active_flow_zone_ids = [
             str(zone.id) for zone in flow_zones if getattr(zone, "active", False)
         ]
+        self._flow_initiators_by_zone_id = {
+            str(zone.id): sorted(get_flow_initiators(zone, spa_state))
+            for zone in flow_zones
+            if isinstance(zone, FlowZone)
+        }
         self._manual_flow_zone_ids = [
             str(zone.id)
             for zone in flow_zones
-            if isinstance(zone, FlowZone) and is_manual_flow_demand(zone)
+            if isinstance(zone, FlowZone) and is_manual_flow_demand(zone, spa_state)
         ]
 
         self._attr_is_on = bool(
@@ -251,6 +258,7 @@ class GeckoSpaInUseBinarySensor(
             "active_light_zone_ids": self._active_light_zone_ids,
             "manual_flow_zone_ids": self._manual_flow_zone_ids,
             "active_flow_zone_ids": self._active_flow_zone_ids,
+            "flow_initiators_by_zone_id": self._flow_initiators_by_zone_id,
         }
 
     @callback
