@@ -242,6 +242,9 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._async_handle_zone_update({"last_update": "zone_update"}),
                     self.hass.loop
                 )
+
+            def on_state_update(state_data):
+                self.update_spa_state(state_data)
             
             # Create refresh token callback
             refresh_token_callback = self._create_refresh_token_callback(websocket_url)
@@ -252,6 +255,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 websocket_url=websocket_url,
                 vessel_name=self.vessel_name,
                 update_callback=on_zone_update,
+                state_callback=on_state_update,
                 refresh_token_callback=refresh_token_callback,
             )
             

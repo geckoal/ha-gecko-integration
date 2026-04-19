@@ -156,6 +156,11 @@ The integration creates multiple entity types for comprehensive spa control:
 - `sensor.spa_name_rf_signal` - Signal strength indicator
 - `sensor.spa_name_status` - Operational status
 
+**Binary Sensors:**
+- `binary_sensor.spa_name_heating` - Vessel-level heating state (on when any temperature zone is heating)
+- `binary_sensor.spa_name_heating_1` - Temperature zone 1 heating state
+- `binary_sensor.spa_name_cleaning_mode` - Cleaning mode state (on when cleaning mode is active)
+
 ---
 
 ## 🆘 Troubleshooting
