@@ -47,7 +47,14 @@ class GeckoRuntimeData:
 
 
 # List the platforms that this integration supports.
-_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Platform.SELECT, Platform.BINARY_SENSOR]  
+_PLATFORMS: list[Platform] = [
+    Platform.LIGHT,
+    Platform.FAN,
+    Platform.CLIMATE,
+    Platform.SELECT,
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+]  
 _LOGGER = logging.getLogger(__name__)
 
 

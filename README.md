@@ -138,6 +138,7 @@ The integration creates multiple entity types for comprehensive spa control:
 | **Fan** | Pump and blower speed control | Set pump to High speed |
 | **Binary Sensor** | On/off status indicators | Gateway connected status |
 | **Select** | Mode selection (watercare, presets) | Switch to Energy Savings mode |
+| **Sensor** | Numeric values from the cloud device shadow outside modeled zones (e.g. Waterlab / chemistry paths) | pH, ORP, or other metrics when the spa publishes them |
 
 ### Entity Examples
 
@@ -152,9 +153,10 @@ The integration creates multiple entity types for comprehensive spa control:
 - `fan.spa_name_pump_1` - Main circulation pump
 - `fan.spa_name_pump_2` - Jet pump
 
-**Sensors:**
-- `sensor.spa_name_rf_signal` - Signal strength indicator
-- `sensor.spa_name_status` - Operational status
+**Sensors (shadow extensions):**
+- Entities are created dynamically from the Gecko IoT **device shadow** for numeric fields under unknown `zones.*` branches (such as Waterlab) and for `features.*` other than watercare operation mode.
+- Likely water-chemistry paths (names containing `ph`, `orp`, `chlorine`, etc.) are **enabled by default**; other numeric leaves are added as **disabled** diagnostic sensors you can enable in the entity registry.
+- Download diagnostics (**Settings → Devices & Services → Gecko → Download diagnostics**) to inspect redacted shadow topology (`shadow_topology`) without raw values.
 
 ---
 

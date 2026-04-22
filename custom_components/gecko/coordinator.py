@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import logging
 from datetime import timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from gecko_iot_client.models.zone_types import ZoneType, AbstractZone
 
 from .const import DOMAIN
+from .shadow_metrics import extract_extension_metrics
 from .connection_manager import async_get_connection_manager, GeckoMonitorConnection
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,12 +68,21 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Simple connection tracking
         self._consecutive_failures = 0
 
+        # Extension metrics from device shadow (Waterlab, unknown zone types, extra features)
+        self._shadow_metric_values: Dict[str, float | int] = {}
+        self._registered_shadow_metric_paths: Set[str] = set()
+        self._pending_new_metric_paths: Set[str] = set()
+
     def register_zone_update_callback(self, callback):
         """Register a callback to be called when zone data updates."""
         self._zone_update_callbacks.append(callback)
 
     async def _async_handle_zone_update(self, data: dict[str, Any]) -> None:
         """Handle zone update in the event loop."""
+        gecko_client = await self.get_gecko_client()
+        if gecko_client:
+            self.sync_refresh_shadow_metrics(gecko_client)
+
         # Trigger entity discovery when zones are updated
         self.async_set_updated_data(data)
         
@@ -106,7 +116,11 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._consecutive_failures = 0
             else:
                 self._consecutive_failures = 0
-            
+
+            client = await self.get_gecko_client()
+            if client:
+                self.sync_refresh_shadow_metrics(client)
+
             # Data will be updated by geckoIotClient callbacks
             return {"status": "active", "vessel_id": self.vessel_id}
         except Exception as exception:
@@ -119,6 +133,28 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def get_all_zones(self) -> Dict[ZoneType, List[AbstractZone]]:
         """Get all zones for this vessel."""
         return self._zones
+
+    def sync_refresh_shadow_metrics(self, gecko_client: Any) -> None:
+        """Parse extension metrics from the client's last shadow snapshot (sync)."""
+        state = getattr(gecko_client, "_state", None)
+        self._shadow_metric_values = (
+            extract_extension_metrics(state) if state else {}
+        )
+        self._pending_new_metric_paths = (
+            set(self._shadow_metric_values) - self._registered_shadow_metric_paths
+        )
+
+    def get_shadow_metric_value(self, metric_path: str) -> float | int | None:
+        """Return a single numeric leaf from the last shadow refresh."""
+        val = self._shadow_metric_values.get(metric_path)
+        return val if val is not None else None
+
+    def take_pending_new_metric_paths(self) -> list[str]:
+        """Paths not yet bound to sensor entities; marks them registered."""
+        out = sorted(self._pending_new_metric_paths)
+        self._registered_shadow_metric_paths.update(out)
+        self._pending_new_metric_paths.clear()
+        return out
 
     async def _simple_reconnect(self) -> None:
         """Simple reconnection - let geckoIotClient handle token refresh."""
@@ -307,3 +343,6 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._zones.clear()
         self._spa_state.clear()
         self._zone_update_callbacks.clear()
+        self._shadow_metric_values.clear()
+        self._registered_shadow_metric_paths.clear()
+        self._pending_new_metric_paths.clear()
