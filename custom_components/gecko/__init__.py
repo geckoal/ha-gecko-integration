@@ -223,3 +223,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Error disconnecting monitors during unload: %s", ex)
     
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry data to current schema version."""
+    _LOGGER.debug(
+        "Migrating config entry from version %s.%s",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    if config_entry.version > 1:
+        # Downgrade from a future version is not supported
+        return False
+
+    # Version 1 is the current version — no migration needed
+    return True
