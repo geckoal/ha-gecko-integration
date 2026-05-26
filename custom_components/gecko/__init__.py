@@ -100,8 +100,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ConfigEntryAuthFailed:
         # Re-raise auth failures directly so HA triggers the reauth flow
         raise
-    except (ConnectionError, TimeoutError, OSError) as ex:
-        # These indicate temporary connection issues that should trigger retry
+    except OSError as ex:
+        # OSError covers ConnectionError, TimeoutError, and other I/O issues
         raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available
