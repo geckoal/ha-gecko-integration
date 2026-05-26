@@ -96,7 +96,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Check if connection exists and is active
             connection_manager = await async_get_connection_manager(self.hass)
-            connection = connection_manager._connections.get(self.monitor_id)
+            connection = connection_manager.get_connection(self.monitor_id)
             
             if not connection or not connection.is_connected:
                 self._consecutive_failures += 1
@@ -195,14 +195,14 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get the gecko client for this vessel's monitor."""
         try:
             connection_manager = await async_get_connection_manager(self.hass)
-            connection = connection_manager._connections.get(self.monitor_id)
-            
+            connection = connection_manager.get_connection(self.monitor_id)
+
             if connection and connection.is_connected:
                 return connection.gecko_client
             else:
                 _LOGGER.warning("No active connection found for vessel %s (monitor %s)", self.vessel_name, self.monitor_id)
                 return None
-                
+
         except Exception as e:
             _LOGGER.error("Failed to get gecko client for vessel %s: %s", self.vessel_name, e)
             return None
