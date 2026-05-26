@@ -9,11 +9,11 @@ from gecko_iot_client import GeckoIotClient
 from gecko_iot_client.models.connectivity import ConnectivityStatus
 from gecko_iot_client.models.zone_types import ZoneType
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .connection_manager import async_get_connection_manager
+from . import GeckoConfigEntry, GeckoRuntimeData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def _get_gecko_client_info(gecko_client: GeckoIotClient) -> dict[str, Any]:
                 transporter_info["monitor_id"] = monitor_id
             # Check for MQTT-specific attributes
             mqtt_client = getattr(transporter, '_mqtt_client', None)
-            if mqtt_client and hasattr(mqtt_client, 'is_connected'):
+            if mqtt_client is not None:
                 transporter_info["mqtt_connected"] = mqtt_client.is_connected()
             client_info["transporter"] = transporter_info
         
@@ -137,7 +137,7 @@ def _get_connection_diagnostics(connection_manager) -> dict[str, Any]:
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, config_entry: ConfigEntry
+    hass: HomeAssistant, config_entry: GeckoConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     
@@ -158,10 +158,10 @@ async def async_get_config_entry_diagnostics(
     }
     
     # Get runtime data (API client info)
-    if hasattr(config_entry, "runtime_data") and config_entry.runtime_data:
-        api_client = config_entry.runtime_data
+    runtime_data: GeckoRuntimeData = config_entry.runtime_data
+    if runtime_data:
         diagnostics_data["runtime_data"] = {
-            "api_client_type": type(api_client).__name__,
+            "api_client_type": type(runtime_data.api_client).__name__,
         }
     
     return diagnostics_data

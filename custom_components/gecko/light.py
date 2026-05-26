@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from homeassistant.components.light import ColorMode, LightEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
@@ -16,6 +15,7 @@ from homeassistant.core import callback
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
+from . import GeckoConfigEntry
 
 from gecko_iot_client.models.zone_types import ZoneType
 
@@ -25,7 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: GeckoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Gecko light entities from a config entry."""
@@ -79,7 +79,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
     def __init__(
         self,
         coordinator: GeckoVesselCoordinator,
-        config_entry: ConfigEntry,
+        config_entry: GeckoConfigEntry,
         zone: Any,  # LightingZone from coordinator
     ) -> None:
         """Initialize the light."""

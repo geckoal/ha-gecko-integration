@@ -87,11 +87,10 @@ class GeckoConnectionManager:
             connection.connectivity_status = connectivity_status
             
             # Update connection status based on connectivity
-            if hasattr(connectivity_status, 'vessel_status'):
-                # If vessel is running but transporter is not connected, we may need to refresh token
-                vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-                if vessel_running and not connection.is_connected:
-                    _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
+            # If vessel is running but transporter is not connected, we may need to refresh token
+            vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
+            if vessel_running and not connection.is_connected:
+                _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
         
         gecko_client.on_zone_update(on_zone_update)
         gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
@@ -209,8 +208,8 @@ class GeckoConnectionManager:
         try:
             # Get the token refresh callback from the existing connection
             refresh_callback = None
-            if hasattr(connection.gecko_client, 'transporter') and hasattr(connection.gecko_client.transporter, '_token_refresh_callback'):
-                refresh_callback = connection.gecko_client.transporter._token_refresh_callback
+            if connection.gecko_client and connection.gecko_client.transporter:
+                refresh_callback = getattr(connection.gecko_client.transporter, '_token_refresh_callback', None)
             
             if not refresh_callback or not callable(refresh_callback):
                 _LOGGER.error("No token refresh callback available for monitor %s - cannot reconnect", monitor_id)
@@ -256,10 +255,9 @@ class GeckoConnectionManager:
                 # Set up connectivity update handler
                 def on_connectivity_update(connectivity_status):
                     connection.connectivity_status = connectivity_status
-                    if hasattr(connectivity_status, 'vessel_status'):
-                        vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-                        if vessel_running and not connection.is_connected:
-                            _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
+                    vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
+                    if vessel_running and not connection.is_connected:
+                        _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
                 
                 gecko_client.on_zone_update(on_zone_update)
                 gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
@@ -390,7 +388,7 @@ class GeckoConnectionManager:
                 "websocket_url": connection.websocket_url,
             }
             
-            if hasattr(connection.gecko_client, 'connectivity_status') and connection.gecko_client.connectivity_status:
+            if connection.gecko_client and connection.gecko_client.connectivity_status:
                 status_info["connectivity_status"] = str(connection.gecko_client.connectivity_status)
             
             return status_info

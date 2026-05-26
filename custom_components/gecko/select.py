@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -16,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
+from . import GeckoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ WATERCARE_MODE_OPTIONS = [
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: GeckoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Gecko select entities."""

@@ -46,6 +46,9 @@ class GeckoRuntimeData:
     coordinators: list[GeckoVesselCoordinator]
 
 
+type GeckoConfigEntry = ConfigEntry[GeckoRuntimeData]
+
+
 # List the platforms that this integration supports.
 _PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Platform.SELECT, Platform.BINARY_SENSOR]  
 _LOGGER = logging.getLogger(__name__)
