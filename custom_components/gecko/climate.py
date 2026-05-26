@@ -11,7 +11,6 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
@@ -22,6 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
+from . import GeckoConfigEntry
 from gecko_iot_client.models.zone_types import ZoneType
 from gecko_iot_client.models.temperature_control_zone import TemperatureControlZone
 
@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: GeckoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Gecko climate entities from a config entry."""
@@ -51,10 +51,6 @@ async def async_setup_entry(
         
         entities = []
         for zone in zones:
-            if not hasattr(zone, "id"):
-                _LOGGER.warning("Zone object missing 'id' attribute: %s", zone)
-                continue
-            
             # Only add if not already added
             if zone.id not in added_zones[vessel_key]:
                 entities.append(GeckoClimate(coordinator, zone))
