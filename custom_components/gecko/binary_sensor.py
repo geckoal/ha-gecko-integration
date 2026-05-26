@@ -83,6 +83,8 @@ async def async_setup_entry(
 class GeckoBinarySensorEntity(CoordinatorEntity[GeckoVesselCoordinator], BinarySensorEntity):
     """Representation of a Gecko binary sensor."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         coordinator: GeckoVesselCoordinator,
@@ -91,18 +93,15 @@ class GeckoBinarySensorEntity(CoordinatorEntity[GeckoVesselCoordinator], BinaryS
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
-        
+
         self.entity_description = description
         self._monitor_id = coordinator.monitor_id
         self._vessel_name = coordinator.vessel_name
         self._vessel_id = coordinator.vessel_id
-        
-        # Set up entity attributes
-        vessel_id_name = coordinator.vessel_name.lower().replace(" ", "_").replace("-", "_")
-        self._attr_name = f"{coordinator.vessel_name} {description.name}"
+
+        # Set up entity attributes — has_entity_name=True means HA prepends device name
         self._attr_unique_id = f"{config_entry.entry_id}_{coordinator.vessel_id}_{description.key}"
-        self.entity_id = f"binary_sensor.{vessel_id_name}_{description.key}"
-        
+
         # Device info for grouping entities
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, str(coordinator.vessel_id))},
