@@ -5,12 +5,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.light import ColorMode, LightEntity
-from homeassistant.core import HomeAssistant
+from homeassistant.components.light import (
+    ATTR_BRIGHTNESS,
+    ATTR_RGB_COLOR,
+    ColorMode,
+    LightEntity,
+)
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.core import callback
 
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
@@ -18,6 +22,7 @@ from .entity import GeckoEntityAvailabilityMixin
 from . import GeckoConfigEntry
 
 from gecko_iot_client.models.zone_types import ZoneType
+from gecko_iot_client.models.lighting_zone import LightingZone
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,7 +85,7 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
         self,
         coordinator: GeckoVesselCoordinator,
         config_entry: GeckoConfigEntry,
-        zone: Any,  # LightingZone from coordinator
+        zone: LightingZone,
     ) -> None:
         """Initialize the light."""
         super().__init__(coordinator)
@@ -96,15 +101,21 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
             identifiers={(DOMAIN, str(coordinator.vessel_id))},
         )
         
-        # Set basic light features
-        self._attr_supported_color_modes = {ColorMode.ONOFF}
-        self._attr_color_mode = ColorMode.ONOFF
+        # Determine color support based on zone capabilities
+        self._supports_color = zone.rgbi is not None
+        
+        if self._supports_color:
+            self._attr_supported_color_modes = {ColorMode.RGB}
+            self._attr_color_mode = ColorMode.RGB
+        else:
+            self._attr_supported_color_modes = {ColorMode.ONOFF}
+            self._attr_color_mode = ColorMode.ONOFF
         
         # Initialize state and availability (will be set by async_added_to_hass event registration)
         self._attr_available = False
         self._update_state()
 
-    def _get_zone_state(self) -> Any | None:
+    def _get_zone_state(self) -> LightingZone | None:
         """Get the current zone state from coordinator."""
         try:
             light_zones = self.coordinator.get_zones_by_type(ZoneType.LIGHTING_ZONE)
@@ -116,10 +127,26 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
     def _update_state(self) -> None:
         """Update entity state from zone data."""
         zone = self._get_zone_state()
-        if zone:
-            self._attr_is_on = getattr(zone, 'active', False)
-        else:
+        if zone is None:
             self._attr_is_on = None
+            return
+        
+        self._attr_is_on = zone.active if zone.active is not None else False
+        
+        # Update color support dynamically (zone may gain color after initial setup)
+        if zone.rgbi is not None and not self._supports_color:
+            self._supports_color = True
+            self._attr_supported_color_modes = {ColorMode.RGB}
+            self._attr_color_mode = ColorMode.RGB
+        
+        # Update RGB color state
+        if self._supports_color and zone.rgbi is not None:
+            self._attr_rgb_color = (zone.rgbi.r, zone.rgbi.g, zone.rgbi.b)
+            # Map intensity (0-255) to HA brightness (0-255)
+            if zone.rgbi.i is not None:
+                self._attr_brightness = zone.rgbi.i
+            else:
+                self._attr_brightness = None
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -128,48 +155,65 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
         # Availability is now updated via CONNECTIVITY_UPDATE events, not polling
         self.async_write_ha_state()
 
-    async def async_turn_on(self, **kwargs) -> None:
-        """Turn the light on."""
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the light on, optionally with color/brightness/effect."""
         try:
-            # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
             if not gecko_client:
                 _LOGGER.error("No gecko client available for %s", self._attr_name)
                 return
                 
-            # Get the light zone from coordinator and activate it
             light_zones = self.coordinator.get_zones_by_type(ZoneType.LIGHTING_ZONE)
-            zone = next((z for z in light_zones if z.id == self._zone.id), None)
-            if zone:
-                activate_method = getattr(zone, "activate", None)
-                if activate_method and callable(activate_method):
-                    activate_method()
-                else:
-                    _LOGGER.warning("Zone %s does not have activate method", zone.id)
-            else:
+            zone: LightingZone | None = next(
+                (z for z in light_zones if z.id == self._zone.id), None
+            )
+            if zone is None:
                 _LOGGER.warning("Could not find lighting zone %s", self._zone.id)
+                return
+            
+            # Handle color request (with optional brightness)
+            if ATTR_RGB_COLOR in kwargs:
+                r, g, b = kwargs[ATTR_RGB_COLOR]
+                # Use brightness as intensity if provided, otherwise keep existing
+                intensity = kwargs.get(ATTR_BRIGHTNESS)
+                if intensity is None and zone.rgbi is not None:
+                    intensity = zone.rgbi.i
+                zone.set_color(r, g, b, intensity)
+                return
+            
+            # Handle brightness-only change (keep current color)
+            if ATTR_BRIGHTNESS in kwargs and zone.rgbi is not None:
+                zone.set_color(
+                    zone.rgbi.r,
+                    zone.rgbi.g,
+                    zone.rgbi.b,
+                    kwargs[ATTR_BRIGHTNESS],
+                )
+                return
+            
+            # Simple on with no parameters
+            zone.activate()
+            
         except Exception as e:
             _LOGGER.error("Error turning on light %s: %s", self._attr_name, e)
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
         try:
-            # Check if gecko client is connected
             gecko_client = await self.coordinator.get_gecko_client()
             if not gecko_client:
                 _LOGGER.error("No gecko client available for %s", self._attr_name)
                 return
                 
-            # Get the light zone from coordinator and deactivate it
             light_zones = self.coordinator.get_zones_by_type(ZoneType.LIGHTING_ZONE)
-            zone = next((z for z in light_zones if z.id == self._zone.id), None)
-            if zone:
-                deactivate_method = getattr(zone, "deactivate", None)
-                if deactivate_method and callable(deactivate_method):
-                    deactivate_method()
-                else:
-                    _LOGGER.warning("Zone %s does not have deactivate method", zone.id)
-            else:
+            zone: LightingZone | None = next(
+                (z for z in light_zones if z.id == self._zone.id), None
+            )
+            if zone is None:
                 _LOGGER.warning("Could not find lighting zone %s", self._zone.id)
+                return
+            
+            zone.deactivate()
+            
         except Exception as e:
             _LOGGER.error("Error turning off light %s: %s", self._attr_name, e)
