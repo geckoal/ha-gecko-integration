@@ -74,6 +74,8 @@ async def async_setup_entry(
 
 class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
     """Representation of a Gecko light."""
+
+    _attr_has_entity_name = True
     coordinator: GeckoVesselCoordinator
 
     def __init__(
@@ -84,13 +86,11 @@ class GeckoLight(GeckoEntityAvailabilityMixin, CoordinatorEntity, LightEntity):
     ) -> None:
         """Initialize the light."""
         super().__init__(coordinator)
-        
+
         self._zone = zone
-        self.entity_id = f"light.{coordinator.vessel_name}_light_{zone.id}".lower()
-        
-        self._attr_name = f"{coordinator.vessel_name} light zone {zone.id}"
-        self._attr_unique_id = f"{config_entry.entry_id}_{coordinator.vessel_name}_light_{zone.id}"
-        
+        self._attr_name = f"Light {zone.id}"
+        self._attr_unique_id = f"{config_entry.entry_id}_{coordinator.vessel_id}_light_{zone.id}"
+
         # Device info for grouping entities - reference the actual device created in __init__.py
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, str(coordinator.vessel_id))},
