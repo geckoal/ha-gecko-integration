@@ -3,14 +3,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-import sys
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow, config_validation as cv, device_registry as dr
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_entry_oauth2_flow, config_validation as cv, device_registry as dr
 
 
 from .api import OAuthGeckoApi
@@ -99,11 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # connection-related issues, not programming errors
     try:
         await _setup_vessels_and_gecko_clients(hass, entry)
+    except ConfigEntryAuthFailed:
+        # Re-raise auth failures directly so HA triggers the reauth flow
+        raise
     except (ConnectionError, TimeoutError, OSError) as ex:
         # These indicate temporary connection issues that should trigger retry
-        raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
-    except KeyError as ex:
-        # Missing required data (e.g., 'refresh_token') indicates auth issues
         raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available
@@ -164,6 +162,8 @@ def _setup_vessel_device(entry: ConfigEntry, vessel: dict, device_registry: dr.D
 
 async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, coordinator: GeckoVesselCoordinator) -> None:
     """Set up geckoIotClient connection for a vessel using the singleton connection manager."""
+    from aiohttp import ClientResponseError
+
     vessel_id = vessel.get("vesselId")
     vessel_name = vessel.get("name", f"Vessel {vessel_id}")
     monitor_id = vessel.get("monitorId")
@@ -190,7 +190,14 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
         
         if not success:
             raise ConnectionError(f"Failed to setup connection for monitor {monitor_id}")
-            
+
+    except ClientResponseError as ex:
+        if ex.status in (401, 403):
+            raise ConfigEntryAuthFailed(
+                f"Authentication failed for vessel {vessel_name}: {ex}"
+            ) from ex
+        _LOGGER.error("Failed to set up connection for monitor %s: %s", monitor_id, ex, exc_info=True)
+        raise
     except Exception as ex:
         _LOGGER.error("Failed to set up connection for monitor %s: %s", monitor_id, ex, exc_info=True)
         raise
