@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
@@ -15,6 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
+from . import GeckoConfigEntry
 
 from gecko_iot_client.models.zone_types import ZoneType, FlowZoneType
 from gecko_iot_client.models.flow_zone import FlowZone, FlowZoneCapabilities
@@ -23,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: GeckoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Gecko fan entities from a config entry."""
@@ -60,7 +60,7 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
     def __init__(
         self,
         coordinator: GeckoVesselCoordinator,
-        config_entry: ConfigEntry,
+        config_entry: GeckoConfigEntry,
         zone: FlowZone,  # FlowZone from coordinator
     ) -> None:
         """Initialize the Pump Fan."""

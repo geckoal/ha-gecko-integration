@@ -1,1 +1,5 @@
 *.pyc
+
+# AI tooling
+.kiro/
+.claude/

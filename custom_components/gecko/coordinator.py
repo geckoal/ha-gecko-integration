@@ -21,9 +21,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Constants
 UPDATE_INTERVAL_SECONDS = 30  # seconds between coordinator updates
-MAX_CONSECUTIVE_FAILURES = 2  # max failures before attempting reconnect
+MAX_CONSECUTIVE_FAILURES = 3  # max failures before attempting reconnect
 RECONNECT_DELAY = 1  # seconds to wait before reconnecting
 INITIAL_ZONE_TIMEOUT = 60.0  # seconds to wait for initial zone data
+MAX_RECONNECT_BACKOFF = 300  # max seconds between reconnect attempts (5 min)
 
 
 class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -66,6 +67,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         # Simple connection tracking
         self._consecutive_failures = 0
+        self._reconnect_attempts = 0
 
     def register_zone_update_callback(self, callback):
         """Register a callback to be called when zone data updates."""
@@ -99,13 +101,19 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not connection or not connection.is_connected:
                 self._consecutive_failures += 1
                 
-                # After 2 consecutive failures (1 minute), try to reconnect with fresh token
+                # After MAX_CONSECUTIVE_FAILURES, try to reconnect with progressive backoff
                 if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    _LOGGER.warning("Connection lost for %s, attempting reconnect", self.vessel_name)
+                    _LOGGER.warning(
+                        "Connection lost for %s (%d consecutive failures), attempting reconnect",
+                        self.vessel_name,
+                        self._consecutive_failures,
+                    )
                     await self._simple_reconnect()
-                    self._consecutive_failures = 0
+                    # Don't reset failures here — only reset on success
             else:
+                # Connection is healthy, reset all failure counters
                 self._consecutive_failures = 0
+                self._reconnect_attempts = 0
             
             # Data will be updated by geckoIotClient callbacks
             return {"status": "active", "vessel_id": self.vessel_id}
@@ -121,7 +129,41 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._zones
 
     async def _simple_reconnect(self) -> None:
-        """Simple reconnection - let geckoIotClient handle token refresh."""
+        """Simple reconnection with progressive backoff.
+        
+        Uses exponential backoff to avoid hammering the API when it's down.
+        The geckoIotClient handles its own token refresh internally, but if
+        the connection manager level reconnect is needed (e.g., after the
+        transporter gave up), this provides a higher-level retry.
+        """
+        now = self.hass.loop.time()
+        next_allowed = getattr(self, "_next_reconnect_time", 0.0)
+        if now < next_allowed:
+            _LOGGER.debug(
+                "Skipping reconnect for %s; next attempt in %.0fs",
+                self.vessel_name,
+                next_allowed - now,
+            )
+            return
+
+        self._reconnect_attempts += 1
+
+        # Progressive backoff: don't retry too aggressively at coordinator level
+        # The transporter already has its own backoff, so this is a last-resort retry
+        backoff_delay = min(
+            30 * (2 ** (self._reconnect_attempts - 1)), MAX_RECONNECT_BACKOFF
+        )
+        self._next_reconnect_time = now + backoff_delay
+
+        _LOGGER.info(
+            "Reconnect attempt %d for %s (next allowed in %.0fs)",
+            self._reconnect_attempts,
+            self.vessel_name,
+            backoff_delay,
+        )
+
+        # Don't block the coordinator update with a long sleep — just attempt once
+        # The next coordinator update cycle will retry if still disconnected
         try:
             connection_manager = await async_get_connection_manager(self.hass)
             
@@ -130,12 +172,24 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             success = await connection_manager.async_reconnect_monitor(self.monitor_id)
             
             if success:
-                _LOGGER.info("Reconnected %s", self.vessel_name)
+                _LOGGER.info("Reconnected %s after %d attempts", self.vessel_name, self._reconnect_attempts)
+                self._consecutive_failures = 0
+                self._reconnect_attempts = 0
             else:
-                _LOGGER.error("Failed to reconnect %s", self.vessel_name)
+                _LOGGER.warning(
+                    "Failed to reconnect %s (attempt %d) - will retry no sooner than %ds",
+                    self.vessel_name,
+                    self._reconnect_attempts,
+                    backoff_delay,
+                )
                 
         except Exception as e:
-            _LOGGER.error("Failed to reconnect %s: %s", self.vessel_name, e)
+            _LOGGER.error(
+                "Failed to reconnect %s (attempt %d): %s",
+                self.vessel_name,
+                self._reconnect_attempts,
+                e,
+            )
 
     async def get_gecko_client(self):
         """Get the gecko client for this vessel's monitor."""
@@ -160,7 +214,7 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         or are about to expire. It fetches a fresh websocket URL with new JWT tokens
         from the Gecko API using the OAuth2-managed access token.
         """
-        def refresh_token_callback(monitor_id: str | None = None) -> str:
+        def refresh_token_callback(monitor_id: str | None = None) -> str | None:
             """Handle token refresh by getting a new websocket URL.
             
             This is a synchronous callback invoked from background threads by the
@@ -171,7 +225,10 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 monitor_id: The monitor ID that needs token refresh (optional, uses self.monitor_id if not provided)
                 
             Returns:
-                New websocket URL with fresh JWT token, or original URL on failure
+                New websocket URL with fresh JWT token, or None on failure.
+                Returning None signals to the transporter that the refresh failed
+                and it should back off and retry later rather than reconnecting
+                with a stale token.
             """
             # Use provided monitor_id or fall back to coordinator's monitor_id
             target_monitor_id = monitor_id or self.monitor_id
@@ -181,17 +238,13 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 entry = self.hass.config_entries.async_get_entry(self.entry_id)
                 if not entry:
                     _LOGGER.error("Config entry %s not found for vessel %s - cannot refresh token", self.entry_id, self.vessel_name)
-                    return websocket_url
+                    return None
                 
                 # Get API client from runtime data
-                if not hasattr(entry, 'runtime_data') or not entry.runtime_data:
-                    _LOGGER.error("No runtime_data found for vessel %s - cannot refresh token", self.vessel_name)
-                    return websocket_url
-                
                 api_client = entry.runtime_data.api_client
                 if not api_client:
                     _LOGGER.error("No API client found for vessel %s - cannot refresh token", self.vessel_name)
-                    return websocket_url
+                    return None
                 
                 # Fetch new livestream URL with fresh JWT token
                 # This is a sync callback from background thread, so use run_coroutine_threadsafe
@@ -206,17 +259,18 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Extract the new websocket URL
                 new_url = livestream_data.get("brokerUrl")
                 if new_url:
+                    _LOGGER.debug("Successfully refreshed token for vessel %s", self.vessel_name)
                     return new_url
                 else:
                     _LOGGER.error("No brokerUrl in livestream response for vessel %s", self.vessel_name)
-                    return websocket_url
+                    return None
                     
             except TimeoutError:
-                _LOGGER.error("Timeout fetching new websocket URL for vessel %s - API call took too long", self.vessel_name)
-                return websocket_url
+                _LOGGER.error("Timeout fetching new websocket URL for vessel %s - API may be down", self.vessel_name)
+                return None
             except Exception as e:
-                _LOGGER.error("Failed to refresh token for vessel %s: %s", self.vessel_name, e, exc_info=True)
-                return websocket_url
+                _LOGGER.error("Failed to refresh token for vessel %s: %s", self.vessel_name, e)
+                return None
         
         return refresh_token_callback
 
