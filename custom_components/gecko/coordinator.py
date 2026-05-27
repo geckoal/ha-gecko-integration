@@ -136,21 +136,32 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         the connection manager level reconnect is needed (e.g., after the
         transporter gave up), this provides a higher-level retry.
         """
+        now = self.hass.loop.time()
+        next_allowed = getattr(self, "_next_reconnect_time", 0.0)
+        if now < next_allowed:
+            _LOGGER.debug(
+                "Skipping reconnect for %s; next attempt in %.0fs",
+                self.vessel_name,
+                next_allowed - now,
+            )
+            return
+
         self._reconnect_attempts += 1
-        
+
         # Progressive backoff: don't retry too aggressively at coordinator level
         # The transporter already has its own backoff, so this is a last-resort retry
         backoff_delay = min(
             30 * (2 ** (self._reconnect_attempts - 1)), MAX_RECONNECT_BACKOFF
         )
-        
+        self._next_reconnect_time = now + backoff_delay
+
         _LOGGER.info(
-            "Reconnect attempt %d for %s (backoff: %ds)",
+            "Reconnect attempt %d for %s (next allowed in %.0fs)",
             self._reconnect_attempts,
             self.vessel_name,
             backoff_delay,
         )
-        
+
         # Don't block the coordinator update with a long sleep — just attempt once
         # The next coordinator update cycle will retry if still disconnected
         try:
