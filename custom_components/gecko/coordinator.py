@@ -177,10 +177,10 @@ class GeckoVesselCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._reconnect_attempts = 0
             else:
                 _LOGGER.warning(
-                    "Failed to reconnect %s (attempt %d) - will retry in %ds",
+                    "Failed to reconnect %s (attempt %d) - will retry no sooner than %ds",
                     self.vessel_name,
                     self._reconnect_attempts,
-                    UPDATE_INTERVAL_SECONDS,
+                    backoff_delay,
                 )
                 
         except Exception as e:
