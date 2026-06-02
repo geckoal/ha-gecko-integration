@@ -14,15 +14,18 @@ def _load_env_overrides() -> dict[str, str]:
     """Load overrides from a .env file next to this module (not committed to git)."""
     env_path = Path(__file__).parent / ".env"
     overrides: dict[str, str] = {}
-    if env_path.is_file():
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                key, _, value = line.partition("=")
-                if value:
-                    overrides[key.strip()] = value.strip().strip("\"'")
+    try:
+        if env_path.is_file():
+            with env_path.open(encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    key, _, value = line.partition("=")
+                    if value:
+                        overrides[key.strip()] = value.strip().strip("\"'")
+    except OSError:
+        pass
     return overrides
 
 

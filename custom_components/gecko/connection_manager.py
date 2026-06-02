@@ -88,7 +88,9 @@ class GeckoConnectionManager:
             
             # Update connection.is_connected to reflect actual transport state
             # This ensures the coordinator detects disconnections and can trigger reconnection
-            connection.is_connected = connectivity_status.transport_connected
+            connection.is_connected = bool(
+                getattr(connectivity_status, "transport_connected", False)
+            )
         
         gecko_client.on_zone_update(on_zone_update)
         gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)

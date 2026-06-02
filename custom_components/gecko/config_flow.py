@@ -36,7 +36,11 @@ class ConfigFlow(
     ) -> ConfigFlowResult:
         """Confirm re-authentication with the user."""
         if user_input is None:
-            return self.async_show_form(step_id="reauth_confirm")
+            import voluptuous as vol
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=vol.Schema({}),
+            )
 
         # Register implementation and start the OAuth flow
         await self.async_register_implementation()
