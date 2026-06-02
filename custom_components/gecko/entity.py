@@ -19,14 +19,42 @@ class GeckoEntityAvailabilityMixin:
     hass: HomeAssistant
     _attr_available: bool
     _connectivity_callback_registered: bool = False
+    _registered_gecko_client: GeckoIotClient | None = None
 
     @property
     def available(self) -> bool:
         """Return if entity is available.
         
         Override the cached property to make availability truly dynamic.
+        Also re-registers connectivity callback if the gecko_client has been
+        replaced (e.g., after reconnection).
         """
+        self._ensure_callback_registered()
         return self._attr_available
+
+    def _ensure_callback_registered(self) -> None:
+        """Ensure the connectivity callback is registered on the current gecko_client.
+        
+        After reconnection, the connection manager replaces the gecko_client instance.
+        This method detects that and re-registers the callback on the new client.
+        """
+        if not self._connectivity_callback_registered:
+            return
+        
+        current_client = self._get_gecko_client_sync()
+        if current_client and current_client is not self._registered_gecko_client:
+            # Client was replaced (reconnection happened) — re-register
+            if self._registered_gecko_client:
+                try:
+                    self._registered_gecko_client.off(
+                        EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update
+                    )
+                except Exception:
+                    pass  # Old client may be disposed
+
+            current_client.on(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
+            self._registered_gecko_client = current_client
+            _LOGGER.debug("Re-registered connectivity callback on new gecko_client")
 
     async def async_added_to_hass(self) -> None:
         """Register for connectivity updates when entity is added to hass."""
@@ -50,8 +78,10 @@ class GeckoEntityAvailabilityMixin:
 
         if register:
             gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
+            self._registered_gecko_client = gecko_client
         else:
             gecko_client.off(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
+            self._registered_gecko_client = None
 
         self._connectivity_callback_registered = register
 

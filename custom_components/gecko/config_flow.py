@@ -46,9 +46,12 @@ class ConfigFlow(
         """Create an entry after OAuth authentication."""
         # If this is a reauth flow, update the existing entry
         if self.source == "reauth":
+            # Merge new token data with existing entry data to preserve
+            # vessels, account_id, user_id, and other non-token fields
+            existing_entry = self._get_reauth_entry()
             return self.async_update_reload_and_abort(
-                self._get_reauth_entry(),
-                data=data,
+                existing_entry,
+                data={**existing_entry.data, **data},
             )
 
         # Get available vessels from the cloud API

@@ -86,11 +86,9 @@ class GeckoConnectionManager:
             # Store connectivity status in connection for easy access
             connection.connectivity_status = connectivity_status
             
-            # Update connection status based on connectivity
-            # If vessel is running but transporter is not connected, we may need to refresh token
-            vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-            if vessel_running and not connection.is_connected:
-                _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
+            # Update connection.is_connected to reflect actual transport state
+            # This ensures the coordinator detects disconnections and can trigger reconnection
+            connection.is_connected = connectivity_status.transport_connected
         
         gecko_client.on_zone_update(on_zone_update)
         gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
@@ -244,23 +242,8 @@ class GeckoConnectionManager:
                 
                 gecko_client = GeckoIotClient(monitor_id, transporter, config_timeout=CONFIG_TIMEOUT)
                 
-                # Set up zone update handler to distribute to all callbacks
-                def on_zone_update(updated_zones):
-                    for callback in connection.update_callbacks:
-                        try:
-                            callback(updated_zones)
-                        except Exception as e:
-                            _LOGGER.error("Error in zone update callback for monitor %s: %s", monitor_id, e)
-                
-                # Set up connectivity update handler
-                def on_connectivity_update(connectivity_status):
-                    connection.connectivity_status = connectivity_status
-                    vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
-                    if vessel_running and not connection.is_connected:
-                        _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
-                
-                gecko_client.on_zone_update(on_zone_update)
-                gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+                # Set up handlers using the helper method (DRY principle)
+                self._setup_client_handlers(gecko_client, connection, monitor_id)
                 
                 # Update connection object with new client and URL
                 connection.gecko_client = gecko_client
