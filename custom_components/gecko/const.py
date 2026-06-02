@@ -6,7 +6,7 @@ DOMAIN = "gecko"
 
 # --- Auth & Tenant Defaults ---
 _DEFAULT_OAUTH2_CLIENT_ID = "L81oh6hgUsvMg40TgTGoz4lxNy8eViM0"
-_DEFAULT_AUTH0_URL_BASE = "https://gecko.us.auth0.com"
+_DEFAULT_AUTH0_URL_BASE = "https://gecko-prod.us.auth0.com"
 _DEFAULT_API_BASE_URL = "https://api.geckowatermonitor.com"
 
 
