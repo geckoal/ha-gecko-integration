@@ -3,14 +3,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-import sys
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow, config_validation as cv, device_registry as dr
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_entry_oauth2_flow, config_validation as cv, device_registry as dr, entity_registry as er
 
 
 from .api import OAuthGeckoApi
@@ -54,8 +52,57 @@ _PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Pl
 _LOGGER = logging.getLogger(__name__)
 
 
+def _migrate_entity_unique_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Migrate entity unique_ids from old vessel_name format to stable vessel_id format.
+
+    Old format: {entry_id}_{vessel_name}_light_{zone_id}
+    New format: {entry_id}_{vessel_id}_light_{zone_id}
+
+    This prevents duplicate entities when unique_id format changes.
+    """
+    entity_reg = er.async_get(hass)
+    vessels = entry.data.get("vessels", [])
+
+    for vessel in vessels:
+        vessel_id = vessel.get("vesselId")
+        vessel_name = vessel.get("name")
+        if not vessel_id or not vessel_name:
+            continue
+
+        # Build mapping of old unique_id prefix → new unique_id prefix
+        old_prefix = f"{entry.entry_id}_{vessel_name}"
+        new_prefix = f"{entry.entry_id}_{vessel_id}"
+
+        if old_prefix == new_prefix:
+            continue
+
+        # Find all entities belonging to this config entry with the old prefix
+        entries = er.async_entries_for_config_entry(entity_reg, entry.entry_id)
+        for entity_entry in entries:
+            if entity_entry.unique_id.startswith(old_prefix):
+                new_unique_id = entity_entry.unique_id.replace(
+                    old_prefix, new_prefix, 1
+                )
+                # Only migrate if target unique_id isn't already taken
+                if not entity_reg.async_get_entity_id(
+                    entity_entry.domain, DOMAIN, new_unique_id
+                ):
+                    entity_reg.async_update_entity(
+                        entity_entry.entity_id, new_unique_id=new_unique_id
+                    )
+                    _LOGGER.debug(
+                        "Migrated entity %s unique_id: %s → %s",
+                        entity_entry.entity_id,
+                        entity_entry.unique_id,
+                        new_unique_id,
+                    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Gecko from a config entry."""
+    # Migrate entity unique_ids from old format (vessel_name) to new format (vessel_id)
+    _migrate_entity_unique_ids(hass, entry)
+
     implementation = (
         await config_entry_oauth2_flow.async_get_config_entry_implementation(
             hass, entry
@@ -99,11 +146,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # connection-related issues, not programming errors
     try:
         await _setup_vessels_and_gecko_clients(hass, entry)
-    except (ConnectionError, TimeoutError, OSError) as ex:
-        # These indicate temporary connection issues that should trigger retry
-        raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
-    except KeyError as ex:
-        # Missing required data (e.g., 'refresh_token') indicates auth issues
+    except ConfigEntryAuthFailed:
+        # Re-raise auth failures directly so HA triggers the reauth flow
+        raise
+    except OSError as ex:
+        # OSError covers ConnectionError, TimeoutError, and other I/O issues
         raise ConfigEntryNotReady(f"Failed to connect to Gecko device: {ex}") from ex
 
     # Set up platforms immediately - entities will be created when zone data becomes available
@@ -164,6 +211,8 @@ def _setup_vessel_device(entry: ConfigEntry, vessel: dict, device_registry: dr.D
 
 async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, coordinator: GeckoVesselCoordinator) -> None:
     """Set up geckoIotClient connection for a vessel using the singleton connection manager."""
+    from aiohttp import ClientResponseError
+
     vessel_id = vessel.get("vesselId")
     vessel_name = vessel.get("name", f"Vessel {vessel_id}")
     monitor_id = vessel.get("monitorId")
@@ -190,7 +239,14 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
         
         if not success:
             raise ConnectionError(f"Failed to setup connection for monitor {monitor_id}")
-            
+
+    except ClientResponseError as ex:
+        if ex.status in (401, 403):
+            raise ConfigEntryAuthFailed(
+                f"Authentication failed for vessel {vessel_name}: {ex}"
+            ) from ex
+        _LOGGER.error("Failed to set up connection for monitor %s: %s", monitor_id, ex, exc_info=True)
+        raise
     except Exception as ex:
         _LOGGER.error("Failed to set up connection for monitor %s: %s", monitor_id, ex, exc_info=True)
         raise
@@ -216,3 +272,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Error disconnecting monitors during unload: %s", ex)
     
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry data to current schema version."""
+    _LOGGER.debug(
+        "Migrating config entry from version %s.%s",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    if config_entry.version > 1:
+        # Downgrade from a future version is not supported
+        return False
+
+    if config_entry.version < 1:
+        # Migrate from pre-1.0 to version 1
+        hass.config_entries.async_update_entry(
+            config_entry, version=1, minor_version=1
+        )
+
+    # Version 1 is the current version — no migration needed
+    return True

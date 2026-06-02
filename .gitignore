@@ -3,3 +3,6 @@
 # AI tooling
 .kiro/
 .claude/
+
+# Local dev overrides (auth/tenant config)
+custom_components/gecko/.env

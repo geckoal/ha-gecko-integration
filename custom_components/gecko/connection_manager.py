@@ -87,7 +87,7 @@ class GeckoConnectionManager:
             connection.connectivity_status = connectivity_status
             
             # Update connection status based on connectivity
-            # If vessel is running but transporter is not connected, we may need to refresh token
+            # ConnectivityStatus always has vessel_status (defined in __init__)
             vessel_running = str(connectivity_status.vessel_status) == 'RUNNING'
             if vessel_running and not connection.is_connected:
                 _LOGGER.warning("Vessel running but connection not established for %s", monitor_id)
