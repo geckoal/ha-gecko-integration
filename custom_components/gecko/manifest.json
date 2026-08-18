@@ -5,7 +5,7 @@
     "@geckoal"
   ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["my"],
   "documentation": "https://github.com/geckoal/ha-gecko-integration",
   "integration_type": "hub",
   "iot_class": "cloud_push",
