@@ -9,7 +9,6 @@ _DEFAULT_OAUTH2_CLIENT_ID = "L81oh6hgUsvMg40TgTGoz4lxNy8eViM0"
 _DEFAULT_AUTH0_URL_BASE = "https://gecko-prod.us.auth0.com"
 _DEFAULT_API_BASE_URL = "https://api.geckowatermonitor.com"
 
-
 def _load_env_overrides() -> dict[str, str]:
     """Load overrides from a .env file next to this module (not committed to git)."""
     env_path = Path(__file__).parent / ".env"

@@ -34,27 +34,27 @@ class GeckoEntityAvailabilityMixin:
 
     def _ensure_callback_registered(self) -> None:
         """Ensure the connectivity callback is registered on the current gecko_client.
-        
+
         After reconnection, the connection manager replaces the gecko_client instance.
         This method detects that and re-registers the callback on the new client.
         """
-        if not self._connectivity_callback_registered:
-            return
-        
         current_client = self._get_gecko_client_sync()
-        if current_client and current_client is not self._registered_gecko_client:
-            # Client was replaced (reconnection happened) — re-register
-            if self._registered_gecko_client:
-                try:
-                    self._registered_gecko_client.off(
-                        EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update
-                    )
-                except Exception:
-                    pass  # Old client may be disposed
+        if not current_client or current_client is self._registered_gecko_client:
+            return
 
-            current_client.on(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
-            self._registered_gecko_client = current_client
-            _LOGGER.debug("Re-registered connectivity callback on new gecko_client")
+        # Client was replaced (reconnection happened) — re-register
+        if self._registered_gecko_client:
+            try:
+                self._registered_gecko_client.off(
+                    EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update
+                )
+            except Exception:
+                pass  # Old client may be disposed
+
+        current_client.on(EventChannel.CONNECTIVITY_UPDATE, self._on_connectivity_update)
+        self._registered_gecko_client = current_client
+        self._connectivity_callback_registered = True
+        _LOGGER.debug("Re-registered connectivity callback on new gecko_client")
 
     async def async_added_to_hass(self) -> None:
         """Register for connectivity updates when entity is added to hass."""
@@ -72,7 +72,10 @@ class GeckoEntityAvailabilityMixin:
         if register == self._connectivity_callback_registered:
             return
 
-        gecko_client = await self.coordinator.get_gecko_client()
+        # Register even while the transport is down. The connection manager keeps
+        # the client instance, and this callback is what lets the entity recover
+        # automatically when connectivity returns.
+        gecko_client = self._get_gecko_client_sync()
         if not gecko_client:
             return
 
@@ -107,17 +110,20 @@ class GeckoEntityAvailabilityMixin:
             )
 
     def _update_availability(self) -> None:
-        """Update availability from gecko_iot_client's is_connected property."""
+        """Update availability from the retained connection snapshot."""
         new_availability = self._check_is_connected()
         self._attr_available = new_availability
 
     def _check_is_connected(self) -> bool:
-        """Check if gecko_iot_client is connected."""
-        gecko_client = self._get_gecko_client_sync()
-        if not gecko_client:
+        """Check if the transport, gateway, and vessel are connected."""
+        from .connection_manager import GECKO_CONNECTION_MANAGER_KEY
+
+        connection_manager = self.hass.data.get(GECKO_CONNECTION_MANAGER_KEY)
+        if not connection_manager:
             return False
-        
-        return gecko_client.is_connected
+
+        connection = connection_manager.get_connection(self.coordinator.monitor_id)
+        return connection.is_fully_connected if connection else False
 
     def _get_gecko_client_sync(self) -> GeckoIotClient | None:
         """Get gecko client synchronously from connection manager."""
@@ -129,4 +135,3 @@ class GeckoEntityAvailabilityMixin:
 
         connection = connection_manager._connections.get(self.coordinator.monitor_id)
         return connection.gecko_client if connection else None
-

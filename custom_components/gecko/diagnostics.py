@@ -7,11 +7,9 @@ from typing import Any
 
 from gecko_iot_client import GeckoIotClient
 from gecko_iot_client.models.connectivity import ConnectivityStatus
-from gecko_iot_client.models.zone_types import ZoneType
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
 from .connection_manager import async_get_connection_manager
 from . import GeckoConfigEntry, GeckoRuntimeData
 
@@ -24,19 +22,17 @@ def _get_coordinator_diagnostics(coordinator) -> dict[str, Any]:
         return {}
     
     return {
-        "managed_monitors": list(coordinator._managed_monitors),
-        "monitors_with_zones": list(coordinator._monitors_with_zones),
-        "zones_by_monitor": {
-            monitor_id: {
-                zone_type.value: len(zones) 
-                for zone_type, zones in monitor_zones.items()
-            }
-            for monitor_id, monitor_zones in coordinator._zones_by_monitor.items()
+        "vessel_id": coordinator.vessel_id,
+        "monitor_id": coordinator.monitor_id,
+        "vessel_name": coordinator.vessel_name,
+        "has_initial_zones": coordinator._has_initial_zones,
+        "zones": {
+            zone_type.value: len(zones)
+            for zone_type, zones in coordinator.get_all_zones().items()
         },
-        "spa_states": {
-            monitor_id: list(state.keys()) if state else []
-            for monitor_id, state in coordinator._spa_states.items()
-        },
+        "spa_state_keys": list((coordinator.get_spa_state() or {}).keys()),
+        "consecutive_failures": coordinator._consecutive_failures,
+        "reconnect_attempts": coordinator._reconnect_attempts,
     }
 
 
@@ -141,8 +137,8 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     
-    # Get coordinator and connection manager
-    coordinator = hass.data.get(f"{DOMAIN}_coordinator_{config_entry.entry_id}")
+    # Coordinators are held in config-entry runtime data (one per vessel).
+    runtime_data: GeckoRuntimeData = config_entry.runtime_data
     connection_manager = await async_get_connection_manager(hass)
     
     diagnostics_data = {
@@ -152,13 +148,15 @@ async def async_get_config_entry_diagnostics(
             "domain": config_entry.domain,
             "state": config_entry.state.value,
         },
-        "coordinator": _get_coordinator_diagnostics(coordinator),
+        "coordinators": [
+            _get_coordinator_diagnostics(coordinator)
+            for coordinator in runtime_data.coordinators
+        ],
         "connections": _get_connection_diagnostics(connection_manager),
         "runtime_data": {},
     }
     
     # Get runtime data (API client info)
-    runtime_data: GeckoRuntimeData = config_entry.runtime_data
     if runtime_data:
         diagnostics_data["runtime_data"] = {
             "api_client_type": type(runtime_data.api_client).__name__,

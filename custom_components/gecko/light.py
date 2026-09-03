@@ -37,7 +37,7 @@ async def async_setup_entry(
         return
     
     # Track created entities to avoid duplicates
-    created_entity_ids = set()
+    created_entity_ids: set[tuple[str, str]] = set()
     
     # Create entity discovery function for each coordinator
     def create_discovery_callback(coordinator: GeckoVesselCoordinator):
@@ -51,7 +51,10 @@ async def async_setup_entry(
             
             for zone in light_zones:
                 # Check if entity already exists
-                entity_id = f"{coordinator.vessel_name}_light_{zone.id}".lower()
+                # Vessel names are user-editable and are not guaranteed to be
+                # unique.  Key discovery by the stable vessel/zone identifiers
+                # so identically named spas do not suppress each other's lights.
+                entity_id = (str(coordinator.vessel_id), str(zone.id))
                 if entity_id not in created_entity_ids:
                     entity = GeckoLight(coordinator, config_entry, zone)
                     new_entities.append(entity)

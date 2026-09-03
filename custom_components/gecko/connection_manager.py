@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from homeassistant.core import HomeAssistant, Event
+from gecko_iot_client import GeckoIotClient
+from gecko_iot_client.models.events import EventChannel
+from gecko_iot_client.transporters.mqtt import MqttTransporter
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.singleton import singleton
 from homeassistant.util.hass_dict import HassKey
 
-from gecko_iot_client.models.events import EventChannel
-from gecko_iot_client import GeckoIotClient
-from gecko_iot_client.transporters.mqtt import MqttTransporter
-
-from .const import DOMAIN, CONFIG_TIMEOUT
+from .aws_compat import ensure_aws_crt_compatible
+from .connectivity import (
+    is_fully_connected as connectivity_is_fully_connected,
+)
+from .connectivity import (
+    preserve_known_connectivity_value,
+)
+from .const import CONFIG_TIMEOUT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,9 +46,25 @@ class GeckoMonitorConnection:
     websocket_url: str
     vessel_name: str
     update_callbacks: list[Callable[[dict], None]] = field(default_factory=list)
+    state_callbacks: list[Callable[[dict[str, Any]], None]] = field(default_factory=list)
+    configuration_callbacks: list[Callable[[dict[str, Any]], None]] = field(
+        default_factory=list
+    )
     is_connected: bool = False
     connectivity_status: Any = None  # ConnectivityStatus from geckoIotClient
+    gateway_status: Any = "UNKNOWN"
+    vessel_status: Any = "UNKNOWN"
+    spa_state: dict[str, Any] | None = None
     refresh_token_callback: Callable[[str | None], str] | None = None  # Store callback for reconnection
+
+    @property
+    def is_fully_connected(self) -> bool:
+        """Return whether transport, gateway, and vessel are connected."""
+        return connectivity_is_fully_connected(
+            self.is_connected,
+            self.gateway_status,
+            self.vessel_status,
+        )
     
 
 class GeckoConnectionManager:
@@ -83,17 +105,63 @@ class GeckoConnectionManager:
         
         # Set up connectivity update handler
         def on_connectivity_update(connectivity_status):
+            # A shadow delta often omits connectivity_, which gecko-iot-client
+            # currently represents by resetting gateway and vessel to UNKNOWN.
+            # Preserve the last explicit values so unrelated state pushes do not
+            # make every Home Assistant entity briefly unavailable.
+            connection.gateway_status = preserve_known_connectivity_value(
+                connection.gateway_status,
+                getattr(connectivity_status, "gateway_status", None),
+            )
+            connection.vessel_status = preserve_known_connectivity_value(
+                connection.vessel_status,
+                getattr(connectivity_status, "vessel_status", None),
+            )
+
+            # The client owns this status object and uses it for is_connected.
+            # Normalize it in place so later client and entity callbacks see the
+            # same retained snapshot.
+            connectivity_status.gateway_status = connection.gateway_status
+            connectivity_status.vessel_status = connection.vessel_status
+
             # Store connectivity status in connection for easy access
             connection.connectivity_status = connectivity_status
-            
+
             # Update connection.is_connected to reflect actual transport state
             # This ensures the coordinator detects disconnections and can trigger reconnection
             connection.is_connected = bool(
                 getattr(connectivity_status, "transport_connected", False)
             )
-        
+
+        def on_state_update(state_data: dict[str, Any]):
+            # Keep the latest raw shadow payload around for telemetry that the
+            # current gecko client models do not map yet, like flow initiators.
+            connection.spa_state = state_data
+
+            callbacks = list(connection.state_callbacks)
+            for callback in callbacks:
+                try:
+                    callback(state_data)
+                except Exception as e:
+                    _LOGGER.error("Error in state update callback for monitor %s: %s", monitor_id, e)
+
+        def on_configuration_update(configuration: dict[str, Any]):
+            callbacks = list(connection.configuration_callbacks)
+            for callback in callbacks:
+                try:
+                    callback(configuration)
+                except Exception as e:
+                    _LOGGER.error(
+                        "Error in configuration callback for monitor %s: %s",
+                        monitor_id,
+                        e,
+                    )
+
         gecko_client.on_zone_update(on_zone_update)
         gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+        gecko_client.transporter.on_configuration_loaded(on_configuration_update)
+        gecko_client.transporter.on_state_loaded(on_state_update)
+        gecko_client.transporter.on_state_change(on_state_update)
     
     async def async_get_or_create_connection(
         self,
@@ -101,6 +169,8 @@ class GeckoConnectionManager:
         websocket_url: str,
         vessel_name: str,
         update_callback: Callable[[dict], None] | None = None,
+        state_callback: Callable[[dict[str, Any]], None] | None = None,
+        configuration_callback: Callable[[dict[str, Any]], None] | None = None,
         refresh_token_callback: Callable[[str | None], str] | None = None,
     ) -> GeckoMonitorConnection:
         """Get existing connection or create a new one for a monitor."""
@@ -112,12 +182,24 @@ class GeckoConnectionManager:
                 # Add the callback if provided
                 if update_callback and update_callback not in connection.update_callbacks:
                     connection.update_callbacks.append(update_callback)
+                if state_callback and state_callback not in connection.state_callbacks:
+                    connection.state_callbacks.append(state_callback)
+                if (
+                    configuration_callback
+                    and configuration_callback not in connection.configuration_callbacks
+                ):
+                    connection.configuration_callbacks.append(configuration_callback)
                 
                 return connection
             
             # Create new connection
             
             try:
+                # awscrt is a native extension.  Validate the loaded package
+                # before entering MQTT client construction so an old Python
+                # 3.14/aarch64 wheel cannot terminate Home Assistant.
+                ensure_aws_crt_compatible()
+
                 # Create transporter and client 
                 transporter = MqttTransporter(
                     broker_url=websocket_url, 
@@ -139,6 +221,10 @@ class GeckoConnectionManager:
                 # Add callback if provided
                 if update_callback:
                     connection.update_callbacks.append(update_callback)
+                if state_callback:
+                    connection.state_callbacks.append(state_callback)
+                if configuration_callback:
+                    connection.configuration_callbacks.append(configuration_callback)
                 
                 # Set up handlers using the helper method
                 self._setup_client_handlers(gecko_client, connection, monitor_id)
@@ -234,6 +320,8 @@ class GeckoConnectionManager:
                 
                 # Brief delay before reconnecting
                 await asyncio.sleep(RECONNECT_DELAY)
+
+                ensure_aws_crt_compatible()
                 
                 # Create new transporter and client with fresh URL
                 transporter = MqttTransporter(
@@ -243,7 +331,7 @@ class GeckoConnectionManager:
                 )
                 
                 gecko_client = GeckoIotClient(monitor_id, transporter, config_timeout=CONFIG_TIMEOUT)
-                
+
                 # Set up handlers using the helper method (DRY principle)
                 self._setup_client_handlers(gecko_client, connection, monitor_id)
                 
@@ -316,6 +404,8 @@ class GeckoConnectionManager:
                 
                 if new_url != connection.websocket_url:
                     connection.websocket_url = new_url
+
+                ensure_aws_crt_compatible()
 
                 # Re-instantiate transporter and gecko client with new token
                 transporter = MqttTransporter(

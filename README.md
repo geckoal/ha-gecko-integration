@@ -153,8 +153,22 @@ The integration creates multiple entity types for comprehensive spa control:
 - `fan.spa_name_pump_2` - Jet pump
 
 **Sensors:**
-- `sensor.spa_name_rf_signal` - Signal strength indicator
+- `sensor.spa_name_rf_signal_strength` - RF signal strength
+- `sensor.spa_name_rf_channel` - RF channel
+- `sensor.spa_name_pack_configuration` - Spa pack configuration identifier
+- `sensor.spa_name_home_en_firmware_version` - Home (EN) firmware version
+- `sensor.spa_name_home_en_serial_number` - Home (EN) serial number
+- `sensor.spa_name_spa_co_firmware_version` - Spa (CO) firmware version
+- `sensor.spa_name_spa_co_serial_number` - Spa (CO) serial number
+- `sensor.spa_name_raw_api_data` - credential-redacted raw API payloads for debugging (disabled by default)
+- `sensor.spa_name_flow_status` - Raw spa flow status such as `OK`
 - `sensor.spa_name_status` - Operational status
+
+**Binary Sensors:**
+- `binary_sensor.spa_name_heating` - Vessel-level heating state (on when any temperature zone is heating)
+- `binary_sensor.spa_name_heating_1` - Temperature zone 1 heating state
+- `binary_sensor.spa_name_filtration` - Automatic filtration state (on for `FI`)
+- `binary_sensor.spa_name_flow_check` - Automatic flow-check state (on for `CF` and recorded in entity history)
 
 ---
 
@@ -181,6 +195,12 @@ The integration creates multiple entity types for comprehensive spa control:
 - Check RF signal strength sensor (low signal affects updates)
 - Verify gateway connectivity in the Gecko app
 - Restart the integration: **Settings** → **Devices & Services** → **Gecko** → **⋮** → **Reload**
+
+**Home Assistant restarts or crashes while Gecko connects:**
+- Gecko 2.1.2 and newer install a matched AWS IoT runtime; Gecko 2.1.3 limits the hard safety check to Python 3.14+ on ARM64, where the native crash occurs
+- Update Gecko through HACS, then perform a full Home Assistant restart
+- If the first start reports mixed AWS CRT modules, restart Home Assistant once more; do not use integration reload
+- If Core cannot remain running, start Home Assistant in Safe Mode, update Gecko, and then restart normally
 
 ---
 

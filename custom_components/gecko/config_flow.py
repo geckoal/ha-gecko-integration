@@ -137,7 +137,6 @@ class ConfigFlow(
                     token_url=OAUTH2_TOKEN,
                 ),
             )
-
     async def _resolve_user_and_account(self, data: dict, api_client) -> tuple[str, dict, str]:
         """Resolve user ID and account information."""
         try:

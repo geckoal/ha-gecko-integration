@@ -48,7 +48,14 @@ type GeckoConfigEntry = ConfigEntry[GeckoRuntimeData]
 
 
 # List the platforms that this integration supports.
-_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.FAN, Platform.CLIMATE, Platform.SELECT, Platform.BINARY_SENSOR]  
+_PLATFORMS: list[Platform] = [
+    Platform.LIGHT,
+    Platform.FAN,
+    Platform.CLIMATE,
+    Platform.SELECT,
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+]
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -70,8 +77,11 @@ def _migrate_entity_unique_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
             continue
 
         # Build mapping of old unique_id prefix → new unique_id prefix
-        old_prefix = f"{entry.entry_id}_{vessel_name}"
-        new_prefix = f"{entry.entry_id}_{vessel_id}"
+        # Include the separator after the vessel component. Without it, a
+        # vessel named ``Spa`` also matches unique IDs belonging to ``Spa 2``
+        # (or any other name beginning with the same text).
+        old_prefix = f"{entry.entry_id}_{vessel_name}_"
+        new_prefix = f"{entry.entry_id}_{vessel_id}_"
 
         if old_prefix == new_prefix:
             continue
@@ -178,6 +188,10 @@ async def _setup_vessels_and_gecko_clients(hass: HomeAssistant, entry: ConfigEnt
         vessel_name = vessel.get("name", f"Vessel {i}")
         
         try:
+            coordinator.update_device_telemetry(
+                vessel,
+                source_name="Gecko vessel API",
+            )
             _setup_vessel_device(entry, vessel, device_registry)
             await _setup_vessel_gecko_client(vessel, api_client, coordinator)
         except Exception as e:
@@ -223,6 +237,10 @@ async def _setup_vessel_gecko_client(vessel: dict, api_client: OAuthGeckoApi, co
     
     try:
         livestream_data = await api_client.async_get_monitor_livestream(monitor_id)
+        coordinator.update_device_telemetry(
+            livestream_data,
+            source_name="Gecko livestream API",
+        )
         websocket_url = livestream_data.get("brokerUrl")
         
         if not websocket_url:

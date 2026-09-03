@@ -29,11 +29,29 @@
   },
   "entity": {
     "sensor": {
-      "rf_strength": {
+      "rf_signal_strength": {
         "name": "RF Signal Strength"
       },
       "rf_channel": {
         "name": "RF Channel"
+      },
+      "pack_configuration": {
+        "name": "Pack Configuration"
+      },
+      "home_firmware_version": {
+        "name": "Home (EN) Firmware Version"
+      },
+      "home_serial_number": {
+        "name": "Home (EN) Serial Number"
+      },
+      "spa_firmware_version": {
+        "name": "Spa (CO) Firmware Version"
+      },
+      "spa_serial_number": {
+        "name": "Spa (CO) Serial Number"
+      },
+      "raw_api_data": {
+        "name": "Raw API Data"
       },
       "gateway_status": {
         "name": "Gateway Status"
