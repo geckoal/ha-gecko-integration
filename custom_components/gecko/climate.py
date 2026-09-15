@@ -75,7 +75,14 @@ async def async_setup_entry(
 
 
 class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], ClimateEntity):
-    """Representation of a Gecko climate control."""
+    """Representation of a Gecko climate control.
+
+    Also surfaces the zone's eco mode (zone.mode.eco) as a read-only
+    extra state attribute. The underlying TemperatureControlZone model
+    only exposes eco mode for reading - there is no set_eco()/similar
+    method to change it via the API - so it is not offered as a
+    settable preset, which would imply control that doesn't exist.
+    """
     
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
@@ -121,7 +128,14 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
         self._attr_target_temperature = self._zone.target_temperature
         self._attr_max_temp = self._zone.max_temperature_set_point_c
         self._attr_min_temp = self._zone.min_temperature_set_point_c
-        
+
+        # Eco mode is read-only in the underlying model (see class
+        # docstring), so it is surfaced as an extra state attribute
+        # rather than a settable preset.
+        self._attr_extra_state_attributes = {
+            "eco_mode": self._zone.mode.eco if self._zone.mode else None,
+        }
+
         _LOGGER.debug(
             "Zone %s: current=%s°C, target=%s°C",
             self._zone.id,
