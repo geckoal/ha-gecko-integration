@@ -117,7 +117,13 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         """Update state attributes from zone data."""
         self._attr_is_on = self._zone.active
         self._attr_percentage = int(self._zone.speed) if self._zone.speed is not None else 0
-        
+
+        if not hasattr(self, "_attr_extra_state_attributes"):
+            self._attr_extra_state_attributes = dict()
+
+        if self._zone.initiators is not None:
+            self._attr_extra_state_attributes['initiators'] = list(map(str, self._zone.initiators))
+
         if isinstance(self._zone.speed, (int, float)):
             if self._zone.speed < 34:
                 self._attr_speed = "low"
