@@ -23,9 +23,46 @@ from .coordinator import GeckoVesselCoordinator
 from .entity import GeckoEntityAvailabilityMixin
 from . import GeckoConfigEntry
 from gecko_iot_client.models.zone_types import ZoneType
-from gecko_iot_client.models.temperature_control_zone import TemperatureControlZone
+from gecko_iot_client.models.temperature_control_zone import (
+    TemperatureControlZone,
+    TemperatureControlZoneStatus,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+# Maps the device's granular status to Home Assistant's HVACAction.
+# TemperatureControlZoneStatus.HEAT_PUMP_ERROR has no HVACAction
+# equivalent (HVACAction has no "error" value), so it's mapped to IDLE
+# here and surfaced separately instead - see the heat_pump_error extra
+# state attribute below.
+_HVAC_ACTION_BY_STATUS = {
+    TemperatureControlZoneStatus.IDLE: HVACAction.IDLE,
+    TemperatureControlZoneStatus.HEATING: HVACAction.HEATING,
+    TemperatureControlZoneStatus.COOLING: HVACAction.COOLING,
+    TemperatureControlZoneStatus.INVALID: HVACAction.IDLE,
+    TemperatureControlZoneStatus.HEAT_PUMP_HEATING: HVACAction.HEATING,
+    TemperatureControlZoneStatus.HEAT_PUMP_AND_HEATER_HEATING: HVACAction.HEATING,
+    TemperatureControlZoneStatus.HEAT_PUMP_COOLING: HVACAction.COOLING,
+    TemperatureControlZoneStatus.HEAT_PUMP_DEFROSTING: HVACAction.DEFROSTING,
+    TemperatureControlZoneStatus.HEAT_PUMP_ERROR: HVACAction.IDLE,
+}
+
+# Maps the device's granular status to a plain-language heat source,
+# for the heat_source extra state attribute below - lets automations
+# and dashboards distinguish pure electric heating from heat-pump
+# (potentially combined with electric) heating, which HVACAction alone
+# can't express.
+_HEAT_SOURCE_BY_STATUS = {
+    TemperatureControlZoneStatus.IDLE: "none",
+    TemperatureControlZoneStatus.HEATING: "electric",
+    TemperatureControlZoneStatus.COOLING: "none",
+    TemperatureControlZoneStatus.INVALID: "none",
+    TemperatureControlZoneStatus.HEAT_PUMP_HEATING: "heat_pump",
+    TemperatureControlZoneStatus.HEAT_PUMP_AND_HEATER_HEATING: "heat_pump_and_electric",
+    TemperatureControlZoneStatus.HEAT_PUMP_COOLING: "heat_pump",
+    TemperatureControlZoneStatus.HEAT_PUMP_DEFROSTING: "heat_pump",
+    TemperatureControlZoneStatus.HEAT_PUMP_ERROR: "none",
+}
 
 
 async def async_setup_entry(
@@ -75,7 +112,25 @@ async def async_setup_entry(
 
 
 class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], ClimateEntity):
-    """Representation of a Gecko climate control."""
+    """Representation of a Gecko climate control.
+
+    Also surfaces two things the device's status enum carries that
+    HVACAction alone can't express - both read-only, since
+    gecko_iot_client has no method to force a specific heat source
+    (the spa's own controller appears to choose automatically between
+    its heat pump and electric heater):
+
+    - heat_source: "electric", "heat_pump", "heat_pump_and_electric",
+      or "none" - lets automations/dashboards tell a heat-pump-driven
+      heating cycle apart from a purely electric one, which
+      HVACAction.HEATING alone doesn't distinguish.
+    - heat_pump_error: True when the device reports
+      TemperatureControlZoneStatus.HEAT_PUMP_ERROR. HVACAction has no
+      "error" value, so previously this status silently showed as IDLE
+      like a normal idle state - indistinguishable from everything
+      being fine. It's surfaced separately here so a genuine fault
+      isn't hidden.
+    """
     
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
@@ -110,23 +165,25 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
     
     def _update_from_zone(self) -> None:
         """Update state attributes from zone data."""
-        if self._zone.status:
-            self._attr_hvac_action = (
-                HVACAction.HEATING if self._zone.status.is_heating else HVACAction.IDLE
-            )
-        else:
-            self._attr_hvac_action = HVACAction.IDLE
-        
+        status = self._zone.status
+        self._attr_hvac_action = _HVAC_ACTION_BY_STATUS.get(status, HVACAction.IDLE)
+
+        self._attr_extra_state_attributes = {
+            "heat_source": _HEAT_SOURCE_BY_STATUS.get(status, "none"),
+            "heat_pump_error": status == TemperatureControlZoneStatus.HEAT_PUMP_ERROR,
+        }
+
         self._attr_current_temperature = self._zone.temperature
         self._attr_target_temperature = self._zone.target_temperature
         self._attr_max_temp = self._zone.max_temperature_set_point_c
         self._attr_min_temp = self._zone.min_temperature_set_point_c
         
         _LOGGER.debug(
-            "Zone %s: current=%s°C, target=%s°C",
+            "Zone %s: current=%s°C, target=%s°C, status=%s",
             self._zone.id,
             self._attr_current_temperature,
             self._attr_target_temperature,
+            status,
         )
     
     @callback
