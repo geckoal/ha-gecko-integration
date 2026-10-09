@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
-from .entity import GeckoEntityAvailabilityMixin
+from .entity import GeckoEntityAvailabilityMixin, GeckoZoneEntityMixin
 from . import GeckoConfigEntry
 
 from gecko_iot_client.models.zone_types import ZoneType, FlowZoneType
@@ -53,10 +53,11 @@ async def async_setup_entry(
         discovery_callback()
         coordinator.register_zone_update_callback(discovery_callback)
 
-class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
+class GeckoFan(GeckoZoneEntityMixin, GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
     """Representation of a Gecko pump fan (multi-speed or variable speed)."""
 
     _attr_has_entity_name = True
+    _zone_type = ZoneType.FLOW_ZONE
     coordinator: GeckoVesselCoordinator
     
     def __init__(
@@ -115,18 +116,22 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
   
     def _update_from_zone(self) -> None:
         """Update state attributes from zone data."""
-        self._attr_is_on = self._zone.active
-        self._attr_percentage = int(self._zone.speed) if self._zone.speed is not None else 0
+        zone = self._current_zone()
+        if zone is None:
+            # Not on the current client: keep the last known state.
+            return
+        self._attr_is_on = zone.active
+        self._attr_percentage = int(zone.speed) if zone.speed is not None else 0
         
-        if isinstance(self._zone.speed, (int, float)):
-            if self._zone.speed < 34:
+        if isinstance(zone.speed, (int, float)):
+            if zone.speed < 34:
                 self._attr_speed = "low"
-            elif self._zone.speed < 67:
+            elif zone.speed < 67:
                 self._attr_speed = "medium"
-            elif self._zone.speed <= 100:
+            elif zone.speed <= 100:
                 self._attr_speed = "high"
         
-        if not self._zone.active:
+        if not zone.active:
             self._attr_speed = "off"
             self._attr_is_on = False
     
@@ -152,7 +157,11 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
         
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the fan off."""
-        self._zone.deactivate()
+        zone = self._current_zone()
+        if zone is None:
+            _LOGGER.warning("Could not find pump zone %s", self._zone.id)
+            return
+        zone.deactivate()
         
     @property
     def is_on(self) -> bool | None:
@@ -173,8 +182,7 @@ class GeckoFan(GeckoEntityAvailabilityMixin, CoordinatorEntity, FanEntity):
             if not gecko_client:
                 _LOGGER.error("No gecko client available for %s", self._attr_name)
                 return
-            pump_zones = self._coordinator.get_zones_by_type(ZoneType.FLOW_ZONE)
-            zone = next((z for z in pump_zones if z.id == self._zone.id), None)
+            zone = self._current_zone()
             if zone:
                 set_speed_method = getattr(zone, "set_speed", None)
                 if set_speed_method and callable(set_speed_method):
