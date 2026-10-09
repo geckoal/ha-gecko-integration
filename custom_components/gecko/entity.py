@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from gecko_iot_client.models.events import EventChannel
+from gecko_iot_client.models.zone_types import AbstractZone, ZoneType
 from gecko_iot_client import GeckoIotClient
 from homeassistant.core import HomeAssistant
 from .coordinator import GeckoVesselCoordinator
@@ -130,3 +131,37 @@ class GeckoEntityAvailabilityMixin:
         connection = connection_manager._connections.get(self.coordinator.monitor_id)
         return connection.gecko_client if connection else None
 
+
+class GeckoZoneEntityMixin:
+    """Resolve an entity's zone on the current gecko client, by zone id.
+
+    A reconnect replaces the GeckoIotClient, and the new client builds new
+    zone objects. The zone object an entity was created with then belongs to
+    a client that is no longer connected: reading it freezes the entity at
+    its last state, and commanding it publishes through a dead transport.
+    GeckoLight and GeckoFan.async_set_speed already looked their zone up on
+    every call; this gives the other zone entities the same rule.
+    """
+
+    coordinator: GeckoVesselCoordinator
+    _zone: AbstractZone
+    _zone_type: ZoneType
+
+    def _current_zone(self) -> AbstractZone | None:
+        """Return this entity's zone on the current client, and rebind to it.
+
+        Returns None when the current client has no zone with this id. Callers
+        then keep the last known state and refuse to command, rather than fall
+        back to the replaced client's object.
+        """
+        zone = next(
+            (
+                candidate
+                for candidate in self.coordinator.get_zones_by_type(self._zone_type)
+                if candidate.id == self._zone.id
+            ),
+            None,
+        )
+        if zone is not None:
+            self._zone = zone
+        return zone
