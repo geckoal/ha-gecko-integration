@@ -130,6 +130,10 @@ class GeckoFan(GeckoZoneEntityMixin, GeckoEntityAvailabilityMixin, CoordinatorEn
                 self._attr_speed = "medium"
             elif zone.speed <= 100:
                 self._attr_speed = "high"
+        else:
+            # A zone can report active with no speed; leaving the attribute
+            # unset made _handle_coordinator_update raise AttributeError.
+            self._attr_speed = None
         
         if not zone.active:
             self._attr_speed = "off"
