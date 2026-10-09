@@ -71,9 +71,18 @@ class GeckoConnectionManager:
         
         This helper method extracts the common handler setup logic used when
         creating or reconnecting monitor connections, following the DRY principle.
+
+        Both handlers ignore a client the connection no longer holds. A
+        reconnect replaces the client, and the replaced one must not report
+        for its successor: its connectivity would flip the shared
+        is_connected, and its zones would overwrite the coordinator's with
+        objects that no longer receive state.
         """
         # Set up zone update handler to distribute to all callbacks
         def on_zone_update(updated_zones):
+            if connection.gecko_client is not gecko_client:
+                _LOGGER.debug("Ignoring zone update from a replaced client for monitor %s", monitor_id)
+                return
             # Copy callbacks list to avoid race conditions during iteration
             callbacks = list(connection.update_callbacks)
             for callback in callbacks:
@@ -84,6 +93,9 @@ class GeckoConnectionManager:
         
         # Set up connectivity update handler
         def on_connectivity_update(connectivity_status):
+            if connection.gecko_client is not gecko_client:
+                _LOGGER.debug("Ignoring connectivity update from a replaced client for monitor %s", monitor_id)
+                return
             # Store connectivity status in connection for easy access
             connection.connectivity_status = connectivity_status
             
@@ -95,6 +107,19 @@ class GeckoConnectionManager:
         
         gecko_client.on_zone_update(on_zone_update)
         gecko_client.on(EventChannel.CONNECTIVITY_UPDATE, on_connectivity_update)
+
+    async def _async_stop_client(self, gecko_client: Any, monitor_id: str) -> None:
+        """Disconnect a client, whatever its transport state.
+
+        A client whose transport dropped still runs its token-expiry and retry
+        threads until disconnect() stops them. Disconnecting only clients that
+        reported is_connected left one running client behind per reconnect,
+        since a reconnect happens precisely when is_connected is false.
+        """
+        try:
+            await self.hass.async_add_executor_job(gecko_client.disconnect)
+        except Exception as e:
+            _LOGGER.warning("Error disconnecting monitor %s: %s", monitor_id, e)
     
     async def async_get_or_create_connection(
         self,
@@ -187,12 +212,9 @@ class GeckoConnectionManager:
             if monitor_id in self._connections:
                 connection = self._connections[monitor_id]
                 
-                try:
-                    if connection.is_connected and connection.gecko_client:
-                        await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
-                        connection.is_connected = False
-                except Exception as e:
-                    _LOGGER.error("Error disconnecting monitor %s: %s", monitor_id, e)
+                if connection.gecko_client:
+                    await self._async_stop_client(connection.gecko_client, monitor_id)
+                connection.is_connected = False
                 
                 # Remove from connections
                 del self._connections[monitor_id]
@@ -231,12 +253,9 @@ class GeckoConnectionManager:
             
             # Disconnect existing connection
             async with self._connection_lock:
-                if connection.is_connected and connection.gecko_client:
-                    try:
-                        await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
-                    except Exception as e:
-                        _LOGGER.warning("Error disconnecting monitor %s during reconnect: %s", monitor_id, e)
-                    connection.is_connected = False
+                if connection.gecko_client:
+                    await self._async_stop_client(connection.gecko_client, monitor_id)
+                connection.is_connected = False
                 
                 # Brief delay before reconnecting
                 await asyncio.sleep(RECONNECT_DELAY)
@@ -301,9 +320,9 @@ class GeckoConnectionManager:
             
             try:
                 # Disconnect current connection
-                if connection.gecko_client and connection.is_connected:
-                    await self.hass.async_add_executor_job(connection.gecko_client.disconnect)
-                    connection.is_connected = False
+                if connection.gecko_client:
+                    await self._async_stop_client(connection.gecko_client, monitor_id)
+                connection.is_connected = False
                 
                 # Wait briefly before getting new token
                 await asyncio.sleep(TOKEN_REFRESH_DELAY)

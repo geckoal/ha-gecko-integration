@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import GeckoVesselCoordinator
-from .entity import GeckoEntityAvailabilityMixin
+from .entity import GeckoEntityAvailabilityMixin, GeckoZoneEntityMixin
 from . import GeckoConfigEntry
 from gecko_iot_client.models.zone_types import ZoneType
 from gecko_iot_client.models.temperature_control_zone import TemperatureControlZone
@@ -74,10 +74,11 @@ async def async_setup_entry(
         )
 
 
-class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], ClimateEntity):
+class GeckoClimate(GeckoZoneEntityMixin, GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCoordinator], ClimateEntity):
     """Representation of a Gecko climate control."""
     
     _attr_has_entity_name = True
+    _zone_type = ZoneType.TEMPERATURE_CONTROL_ZONE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_hvac_modes = [HVACMode.HEAT]
@@ -110,21 +111,25 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
     
     def _update_from_zone(self) -> None:
         """Update state attributes from zone data."""
-        if self._zone.status:
+        zone = self._current_zone()
+        if zone is None:
+            # Not on the current client: keep the last known state.
+            return
+        if zone.status:
             self._attr_hvac_action = (
-                HVACAction.HEATING if self._zone.status.is_heating else HVACAction.IDLE
+                HVACAction.HEATING if zone.status.is_heating else HVACAction.IDLE
             )
         else:
             self._attr_hvac_action = HVACAction.IDLE
         
-        self._attr_current_temperature = self._zone.temperature
-        self._attr_target_temperature = self._zone.target_temperature
-        self._attr_max_temp = self._zone.max_temperature_set_point_c
-        self._attr_min_temp = self._zone.min_temperature_set_point_c
+        self._attr_current_temperature = zone.temperature
+        self._attr_target_temperature = zone.target_temperature
+        self._attr_max_temp = zone.max_temperature_set_point_c
+        self._attr_min_temp = zone.min_temperature_set_point_c
         
         _LOGGER.debug(
             "Zone %s: current=%s°C, target=%s°C",
-            self._zone.id,
+            zone.id,
             self._attr_current_temperature,
             self._attr_target_temperature,
         )
@@ -141,10 +146,14 @@ class GeckoClimate(GeckoEntityAvailabilityMixin, CoordinatorEntity[GeckoVesselCo
         if (temperature := kwargs.get("temperature")) is None:
             return
         
+        zone = self._current_zone()
+        if zone is None:
+            _LOGGER.warning("Could not find temperature control zone %s", self._zone.id)
+            return
         try:
             # set_target_temperature is a synchronous method, run in executor
             await self.hass.async_add_executor_job(
-                self._zone.set_target_temperature, temperature
+                zone.set_target_temperature, temperature
             )
           
             _LOGGER.debug(

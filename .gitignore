@@ -6,3 +6,6 @@
 
 # Local dev overrides (auth/tenant config)
 custom_components/gecko/.env
+.venv/
+.pytest_cache/
+__pycache__/
