@@ -184,6 +184,24 @@ The integration creates multiple entity types for comprehensive spa control:
 
 ---
 
+## 🧪 Development
+
+The tests run against a real Home Assistant through
+[pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component)
+and the real `gecko-iot-client` zone models. Only the MQTT transport and the
+IoT client are faked, so no test touches the network.
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements_test.txt
+.venv/bin/python -m pytest
+```
+
+`requirements_test.txt` pins the Home Assistant release the tests run against.
+Bump it with the integration's own minimum version.
+
+---
+
 ## 💬 Support & Community
 
 - 🐛 **Report Issues:** [GitHub Issues](https://github.com/geckoal/ha-gecko-integration/issues)
